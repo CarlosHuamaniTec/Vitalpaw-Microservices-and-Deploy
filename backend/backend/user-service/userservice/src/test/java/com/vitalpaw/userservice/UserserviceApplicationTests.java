@@ -1,10 +1,10 @@
-package com.vitalpaw.mainclient;
+package com.vitalpaw.userservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class MainclientApplicationTests {
+class UserserviceApplicationTests {
 
 	@Test
 	void contextLoads() {
