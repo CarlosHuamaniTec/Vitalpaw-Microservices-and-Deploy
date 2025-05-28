@@ -1,10 +1,10 @@
-package com.vitalpaw.sensor_data_service;
+package com.vitalpaw.sensordata;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class SensorDataServiceApplicationTests {
+class SensordataApplicationTests {
 
 	@Test
 	void contextLoads() {
