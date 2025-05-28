@@ -1,16 +1,25 @@
-package com.vitalpaw.sensordata.model;
+package com.vitalpaw.sensordataservice.model;
 
-import lombok.Getter;
-import lombok.Setter;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import lombok.Data;
 
 import java.time.LocalDateTime;
 
-@Getter
-@Setter
+@Entity
+@Data
 public class SensorData {
-    private String petName;
-    private Float temperature;
-    private Integer heartRate;
-    private String movementState; // "En movimiento", "Movimiento disminuido", "Inmovilidad"
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private Long petId; // Vincula a una mascota
+    private double temperature;
+    private int heartRate;
+    private double x;
+    private double y;
+    private double z;
+    private String breed;
     private LocalDateTime timestamp;
 }
