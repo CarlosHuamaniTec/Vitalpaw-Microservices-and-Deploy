@@ -1,6 +1,10 @@
-FROM python:3.10
+FROM maven:3.8.5-openjdk-17 AS build
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
 COPY . .
-CMD ["celery", "-A", "tasks", "worker", "--loglevel=info"]
+RUN mvn clean package -DskipTests
+
+FROM openjdk:17-jdk-slim
+WORKDIR /app
+COPY --from=build /app/target/sensor-data-service-0.0.1-SNAPSHOT.jar app.jar
+EXPOSE 8082
+CMD ["java", "-jar", "app.jar"]
