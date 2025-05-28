@@ -1,5 +1,6 @@
 package com.vitalpaw.userservice.service;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
@@ -10,8 +11,9 @@ import java.util.Date;
 
 @Service
 public class JwtService {
+
     private static final Key SECRET_KEY = Keys.secretKeyFor(SignatureAlgorithm.HS512);
-    private static final long EXPIRATION_TIME = 86400000; // 24 horas
+    private static final long EXPIRATION_TIME = 864_000_000; // 10 días
 
     public String generateToken(String username) {
         return Jwts.builder()
@@ -23,11 +25,15 @@ public class JwtService {
     }
 
     public String validateToken(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(SECRET_KEY)
-                .build()
-                .parseClaimsJws(token)
-                .getBody()
-                .getSubject();
+        try {
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(SECRET_KEY)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+            return claims.getSubject();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
