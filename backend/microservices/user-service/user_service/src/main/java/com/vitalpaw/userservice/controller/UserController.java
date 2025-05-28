@@ -1,6 +1,7 @@
 package com.vitalpaw.userservice.controller;
 
 import com.vitalpaw.userservice.dto.UserDTO;
+import com.vitalpaw.userservice.model.User;
 import com.vitalpaw.userservice.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -8,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/users")
@@ -49,7 +51,7 @@ public class UserController {
     @GetMapping
     public ResponseEntity<List<UserDTO>> getAllUsers() {
         List<User> users = userService.getAllUsers();
-        return ResponseEntity.ok(users.stream().map(user -> {
+        List<UserDTO> userDTOs = users.stream().map(user -> {
             UserDTO dto = new UserDTO();
             dto.setUsername(user.getUsername());
             dto.setFirstName(user.getFirstName());
@@ -58,7 +60,8 @@ public class UserController {
             dto.setPhone(user.getPhone());
             dto.setCity(user.getCity());
             return dto;
-        }).toList());
+        }).collect(Collectors.toList());
+        return ResponseEntity.ok(userDTOs);
     }
 
     @GetMapping("/{id}")

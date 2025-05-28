@@ -2,6 +2,7 @@ package com.vitalpaw.userservice.controller;
 
 import com.vitalpaw.userservice.dto.PetDTO;
 import com.vitalpaw.userservice.model.Pet;
+import com.vitalpaw.userservice.model.User;
 import com.vitalpaw.userservice.service.PetService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -29,8 +30,9 @@ public class PetController {
         pet.setBreed(petDTO.getBreed());
         pet.setBirthDate(petDTO.getBirthDate());
         // Asignar owner (simulado, en producción verifica usuario)
-        pet.setOwner(new User());
-        pet.getOwner().setId(userId);
+        User owner = new User();
+        owner.setId(userId);
+        pet.setOwner(owner);
         petService.createPet(pet);
         return ResponseEntity.ok("Pet created successfully");
     }
@@ -63,5 +65,13 @@ public class PetController {
     public ResponseEntity<?> deletePet(@PathVariable Long id) {
         petService.deletePet(id);
         return ResponseEntity.ok("Pet deleted successfully");
+    }
+
+    @GetMapping("/{petId}/owner/token")
+    public ResponseEntity<String> getOwnerToken(@PathVariable Long petId) {
+        Pet pet = petService.getPetById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found"));
+        // Simulación: en producción, obtén el token del User
+        return ResponseEntity.ok("dummy-token-from-user"); // Reemplazar con lógica real
     }
 }
