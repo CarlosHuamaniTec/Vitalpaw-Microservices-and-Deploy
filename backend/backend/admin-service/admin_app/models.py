@@ -40,3 +40,19 @@ class Pet(models.Model):
 
     def __str__(self):
         return self.name
+
+class Alert(models.Model):
+    pet = models.ForeignKey(Pet, on_delete=models.CASCADE, related_name='alerts')
+    message = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    severity = models.CharField(max_length=50, choices=[
+        ('LOW', 'Low'),
+        ('MEDIUM', 'Medium'),
+        ('HIGH', 'High'),
+    ])
+
+    class Meta:
+        db_table = 'alerts'
+
+    def __str__(self):
+        return f"Alert for {self.pet.name} - {self.severity}"
