@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Breed, Pet
+from .models import User, Breed, Pet, Alert
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -16,7 +16,14 @@ class BreedAdmin(admin.ModelAdmin):
 
 @admin.register(Pet)
 class PetAdmin(admin.ModelAdmin):
-    list_display = ('name', 'species', 'breed', 'owner', 'created_at')
+    list_display = ('name', 'species', 'breed', 'owner', 'created_at', 'birth_date')
     search_fields = ('name', 'owner__username', 'species')
     list_filter = ('species',)
     ordering = ('-created_at',)
+
+@admin.register(Alert)
+class AlertAdmin(admin.ModelAdmin):
+    list_display = ('pet', 'message', 'severity', 'timestamp')
+    search_fields = ('pet__name', 'message')
+    list_filter = ('severity', 'timestamp')
+    ordering = ('-timestamp',)
