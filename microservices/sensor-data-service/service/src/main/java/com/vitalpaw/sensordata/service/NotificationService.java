@@ -8,16 +8,19 @@ import org.springframework.stereotype.Service;
 @Service
 public class NotificationService {
 
-    public void sendNotification(String title, String body, String token) {
+    // Método para enviar notificaciones (usando Firebase como ejemplo)
+    public void sendNotification(String title, String body) {
         try {
             Message message = Message.builder()
                     .setNotification(Notification.builder()
                             .setTitle(title)
                             .setBody(body)
                             .build())
-                    .setToken(token) // Enviar al token del usuario
+                    .setTopic("vitalpaw-users") // Enviar a un tópico general (puedes ajustar según necesidades)
                     .build();
-            FirebaseMessaging.getInstance().send(message);
+
+            String response = FirebaseMessaging.getInstance().send(message);
+            System.out.println("Notificación enviada: " + response);
         } catch (Exception e) {
             System.err.println("Error al enviar notificación: " + e.getMessage());
         }

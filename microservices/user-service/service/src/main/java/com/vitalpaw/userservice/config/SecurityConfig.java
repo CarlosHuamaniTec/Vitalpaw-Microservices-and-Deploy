@@ -8,6 +8,13 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 
 @Configuration
 @EnableWebSecurity
@@ -24,7 +31,7 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/users/register", "/users/login", "/users/pets/**").permitAll()
+                        .requestMatchers("/users/register", "/users/login", "/users/pets/**", "/users/sensors/**").permitAll()
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
@@ -33,7 +40,7 @@ public class SecurityConfig {
     }
 }
 
-class JwtAuthenticationFilter extends OncePerRequestFilter {
+class JwtAuthenticationFilter implements jakarta.servlet.Filter {
 
     private final JwtService jwtService;
 
@@ -42,10 +49,12 @@ class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain chain) throws IOException, ServletException {
-        String authHeader = request.getHeader("Authorization");
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
+        HttpServletRequest httpRequest = (HttpServletRequest) request;
+        HttpServletResponse httpResponse = (HttpServletResponse) response;
+
+        String authHeader = httpRequest.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
             try {
@@ -55,10 +64,20 @@ class JwtAuthenticationFilter extends OncePerRequestFilter {
                     return;
                 }
             } catch (Exception e) {
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token");
+                httpResponse.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token");
                 return;
             }
         }
         chain.doFilter(request, response);
+    }
+
+    @Override
+    public void init(jakarta.servlet.FilterConfig filterConfig) throws ServletException {
+        // Método vacío, requerido por la interfaz Filter
+    }
+
+    @Override
+    public void destroy() {
+        // Método vacío, requerido por la interfaz Filter
     }
 }

@@ -1,48 +1,50 @@
 package com.vitalpaw.sensordataservice.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vitalpaw.sensordataservice.dto.SensorDataDTO;
 import com.vitalpaw.sensordataservice.service.MqttService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @RestController
-@RequestMapping("/sensor-data/stream")
+@RequestMapping("/stream")
 public class StreamingController {
 
     @Autowired
     private MqttService mqttService;
 
-    @GetMapping(produces = "text/event-stream")
-    public SseEmitter streamData() {
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @GetMapping(value = "/sensor-data", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamSensorData() {
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
-        ConcurrentLinkedQueue<SensorDataDTO> dataQueue = mqttService.dataQueue; // Acceso directo (mejorar con diseño)
+        AtomicBoolean isActive = new AtomicBoolean(true);
+
+        emitter.onTimeout(() -> isActive.set(false));
+        emitter.onError((e) -> isActive.set(false));
+        emitter.onCompletion(() -> isActive.set(false));
+
         new Thread(() -> {
-            while (!emitter.isCompleted()) {
-                SensorDataDTO data = dataQueue.poll();
-                if (data != null) {
-                    try {
-                        emitter.send(SseEmitter.event()
-                                .name("sensor-data")
-                                .data(data));
-                    } catch (IOException e) {
-                        emitter.completeWithError(e);
-                        break;
-                    }
-                }
+            while (isActive.get()) {
                 try {
-                    Thread.sleep(1);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                    SensorDataDTO data = mqttService.dataQueue.poll();
+                    if (data != null) {
+                        emitter.send(SseEmitter.event().data(objectMapper.writeValueAsString(data)));
+                    }
+                    Thread.sleep(1000);
+                } catch (Exception e) {
+                    emitter.completeWithError(e);
                     break;
                 }
             }
         }).start();
+
         return emitter;
     }
 }
