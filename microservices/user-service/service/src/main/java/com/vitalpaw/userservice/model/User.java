@@ -17,14 +17,21 @@ public class User {
     private String firstName;
 
     private String lastName;
+
     @Column(unique = true, nullable = false)
     private String email;
+
     @Column(nullable = false)
     private String password;
+
     private String phone;
+
     private String city;
-    @Column(unique = true, nullable = false)
+
+    @Column(nullable = false)
     private String username;
+
     private String verificationToken;
+
     private boolean isVerified;
 }

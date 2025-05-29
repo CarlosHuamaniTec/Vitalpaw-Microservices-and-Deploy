@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 @RestController
 @RequestMapping("/stream")
-public class StreamingController {
+public class SensorDataController {
 
     @Autowired
     private MqttService mqttService;
