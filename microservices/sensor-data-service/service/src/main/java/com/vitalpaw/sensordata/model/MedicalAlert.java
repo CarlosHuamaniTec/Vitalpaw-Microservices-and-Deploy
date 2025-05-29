@@ -10,17 +10,12 @@ import java.time.LocalDateTime;
 
 @Entity
 @Data
-public class SensorData {
+public class MedicalAlert {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private String sensorId;
     private Long petId;
-    private double temperature;
-    private int heartRate;
-    private double x;
-    private double y;
-    private double z;
-    private String breed;
+    private String alertType; // e.g., "Inmovilidad", "Salud"
+    private String message;
     private LocalDateTime timestamp;
 }

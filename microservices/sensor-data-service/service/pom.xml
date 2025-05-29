@@ -23,7 +23,7 @@
     </parent>
 
     <dependencies>
-        <!-- Web (solo una instancia) -->
+        <!-- Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -35,10 +35,17 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
-        <!-- MQTT -->
+        <!-- MQTT (Spring Integration MQTT) -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mqtt</artifactId>
+            <groupId>org.springframework.integration</groupId>
+            <artifactId>spring-integration-mqtt</artifactId>
+        </dependency>
+
+        <!-- Eclipse Paho MQTT Client -->
+        <dependency>
+            <groupId>org.eclipse.paho</groupId>
+            <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
+            <version>1.2.5</version>
         </dependency>
 
         <!-- Firebase Admin -->
@@ -81,7 +88,7 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- WebFlux para streaming (si es necesario) -->
+        <!-- WebFlux para streaming -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webflux</artifactId>
