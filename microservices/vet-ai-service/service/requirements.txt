@@ -1,0 +1,16 @@
+fastapi==0.68.0
+uvicorn==0.15.0
+transformers==4.35.0
+torch==2.7.0+cu118
+torchvision==0.22.0+cu118
+torchaudio==2.7.0+cu118
+accelerate==0.23.0
+sentencepiece==0.1.99
+protobuf==4.21.6
+numpy==1.24.0
+pandas==1.5.0
+reportlab==3.6.12
+weasyprint==52.5
+tokenizers==0.14.1
+huggingface-hub==0.17.3  # Compatible con tokenizers==0.14.1
+datasets==2.14.6  # Versión más antigua compatible con huggingface-hub==0.17.3
