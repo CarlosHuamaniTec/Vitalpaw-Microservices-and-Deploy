@@ -1,0 +1,116 @@
+version: "3.8"
+
+networks:
+  vitalpaw-network:
+    external: true
+
+services:
+  mariadb:
+    image: mariadb:10.11.13-jammy
+    environment:
+      MYSQL_DATABASE: vitalpawdb
+      MYSQL_USER: vitalpaw
+      MYSQL_PASSWORD_FILE: /run/secrets/db_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u vitalpaw --password=$$(cat /run/secrets/db_password) || exit 1"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+      start_period: 30s
+    networks:
+      - vitalpaw-network
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: vip
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 1m30s
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 512M
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+      placement:
+        constraints:
+          - node.role == manager
+    secrets:
+      - db_password
+      - db_root_password
+
+  phpmyadmin:
+    image: phpmyadmin:5.2.2-apache
+    environment:
+      PMA_HOST: mariadb
+      PMA_ARBITRARY: 0
+      MEMORY_LIMIT: 256M
+      PMA_ABSOLUTE_URI: "https://vitalpaw.tecsup.xyz/admin"
+      PMA_USER: vitalpaw
+      PMA_PASSWORD_FILE: /run/secrets/db_password
+      APACHE_SERVER_NAME: vitalpaw.tecsup.xyz
+      PMA_CONTROLUSER: root
+      PMA_CONTROLPASS_FILE: /run/secrets/db_root_password
+    depends_on:
+      - mariadb
+    networks:
+      - vitalpaw-network
+    volumes:
+      - phpmyadmin_sessions:/sessions
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: vip
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 1m30s
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.phpmyadmin.rule=Host(`vitalpaw.tecsup.xyz`) && PathPrefix(`/admin/`)"
+        - "traefik.http.routers.phpmyadmin.entrypoints=websecure"
+        - "traefik.http.routers.phpmyadmin.tls=true"
+        - "traefik.http.routers.phpmyadmin.tls.certresolver=letsencrypt"
+        - "traefik.http.services.phpmyadmin.loadbalancer.server.port=80"
+        - "traefik.http.middlewares.phpmyadmin-stripprefix.stripprefix.prefixes=/admin"
+        - "traefik.http.middlewares.phpmyadmin-redirect.redirectregex.regex=^https://vitalpaw.tecsup.xyz/admin$$"
+        - "traefik.http.middlewares.phpmyadmin-redirect.redirectregex.replacement=https://vitalpaw.tecsup.xyz/admin/"
+        - "traefik.http.routers.phpmyadmin.middlewares=phpmyadmin-stripprefix,phpmyadmin-redirect,phpmyadmin-auth@file"
+    secrets:
+      - db_password
+      - db_root_password
+
+volumes:
+  mariadb_data:
+  phpmyadmin_sessions:
+
+secrets:
+  db_password:
+    external: true
+  db_root_password:
+    external: true

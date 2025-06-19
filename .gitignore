@@ -52,19 +52,10 @@ externalNativeBuild/
 logs/
 log/
 
-# Redis / Celery / MQTT
-redis_data/
-celery_logs/
-mqtt_data/
-
 # Editor files
 .*.swp
 .*.swo
 *~
-
-# Docs / Markdown
-*.md~
-*.bak
 
 # Sistemas de build / compilación
 .DS_Store
@@ -114,10 +105,10 @@ frps.ini
 **/build/
 
 # CI/CD
-*.yml
-*.yaml
-*.sh
-*.bat
+# *.yml
+# *.yaml
+# *.sh
+# *.bat
 
 # Sistemas operativos
 .AppleDouble
