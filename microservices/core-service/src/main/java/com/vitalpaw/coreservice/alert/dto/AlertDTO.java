@@ -23,9 +23,6 @@ public class AlertDTO {
     @Schema(example = "temperature_alert", description = "Tipo de alerta (ej: temperatura, pulso, etc.)")
     private String type;
 
-    @Schema(example = "high", description = "Nivel de gravedad: high/medium/low")
-    private String severity;
-
     @Schema(example = "140", description = "Valor del pulso registrado (opcional)")
     private Integer pulse;
 

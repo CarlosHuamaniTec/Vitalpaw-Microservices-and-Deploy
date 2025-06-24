@@ -176,6 +176,7 @@ public class UserService {
         dto.setCity(user.getCity());
         dto.setUsername(user.getUsername());
         dto.setIsConfirmed(user.getIsConfirmed());
+        dto.setFcmToken(user.getFcmToken());
         return dto;
     }
 }

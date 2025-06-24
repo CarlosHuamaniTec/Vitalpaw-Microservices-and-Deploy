@@ -26,9 +26,6 @@ public class Alert {
     @Column(name = "type", nullable = false, length = 50)
     private String type;
 
-    @Column(name = "severity", nullable = false, length = 10)
-    private String severity;
-
     @Column(name = "pulse")
     private Integer pulse;
 

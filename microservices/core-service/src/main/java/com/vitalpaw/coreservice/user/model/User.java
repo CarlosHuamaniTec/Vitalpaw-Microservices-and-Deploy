@@ -36,6 +36,9 @@ public class User {
     @Column(name = "is_confirmed", nullable = false)
     private Boolean isConfirmed = false;
 
+    @Column(name = "fcm_token", length = 255)
+    private String fcmToken;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

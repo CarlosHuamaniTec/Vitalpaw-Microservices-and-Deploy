@@ -30,4 +30,7 @@ public class UserDTO {
 
     @Schema(example = "true", description = "Indica si la cuenta fue confirmada")
     private Boolean isConfirmed;
+
+    @Schema(example = "fcm_token_example", description = "Token FCM para notificaciones push")
+    private String fcmToken;
 }

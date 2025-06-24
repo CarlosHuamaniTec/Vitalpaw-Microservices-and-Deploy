@@ -1,4 +1,3 @@
-// /home/carloshuamanitec/Repositories/vitalpaw/centernode/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/model/PetDevice.java
 package com.vitalpaw.coreservice.pet.model;
 
 import jakarta.persistence.*;

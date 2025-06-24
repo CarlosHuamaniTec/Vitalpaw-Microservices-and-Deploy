@@ -80,7 +80,6 @@ public class AlertController {
         dto.setMessage(alert.getMessage());
         dto.setTimestamp(alert.getTimestamp());
         dto.setType(alert.getType());
-        dto.setSeverity(alert.getSeverity());
         dto.setPulse(alert.getPulse());
         dto.setTemperature(alert.getTemperature());
         return dto;

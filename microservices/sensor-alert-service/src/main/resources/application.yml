@@ -1,0 +1,44 @@
+server:
+  port: ${SENSOR_ALERT_SERVICE_PORT:8084}
+spring:
+  application:
+    name: sensor-alert-service
+  datasource:
+    url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:vitalpawdb}
+    username: ${DB_USERNAME:vitalpaw}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.mariadb.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    show-sql: false
+    database-platform: org.hibernate.dialect.MariaDBDialect
+  data:
+    redis:
+      host: ${DRAGONFLY_HOST:localhost}
+      port: ${DRAGONFLY_PORT:6379}
+mqtt:
+  broker:
+    url: ${MQTT_BROKER_URL:tcp://mqtt.tecsup.xyz:1883}
+  username: ${MQTT_USERNAME:ricardo}
+  password: ${MQTT_PASSWORD:ricardo}
+  client:
+    id: sensor-alert-client-${random.uuid}
+  topic: ${MQTT_TOPIC:vitalpaw/health/#}
+firebase:
+  admin-sdk-path: ${FIREBASE_ADMIN_SDK_PATH:/app/firebase-adminsdk.json}
+app:
+  sensor:
+    thresholds:
+      immobile: ${IMMOBILE_THRESHOLD:0.5}
+      lowActivity: ${LOW_ACTIVITY_THRESHOLD:1.5}
+      fall: ${FALL_THRESHOLD:3.0}
+      maxTemperature: ${MAX_TEMPERATURE:40.0}
+      maxHeartRate: ${MAX_HEART_RATE:180}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+api:
+  key: ${API_KEY}
