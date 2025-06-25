@@ -1,0 +1,2123 @@
+=== CONTENIDO SPRING BOOT (core-service) ===
+
+
+=== DOCKERFILE ===
+
+FROM maven:3.9.9-eclipse-temurin-17 AS build
+WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN mvn dependency:go-offline && mvn package -DskipTests
+
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+COPY --from=build /app/target/coreservice-0.0.1-SNAPSHOT.jar app.jar
+
+ENV CORE_SERVICE_PORT=8080 \
+    DB_PORT=3306 \
+    DB_NAME=vitalpawdb \
+    DB_USERNAME=vitalpaw \
+    SPRING_JPA_HIBERNATE_DDL_AUTO=validate \
+    JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+
+EXPOSE ${CORE_SERVICE_PORT}
+
+RUN useradd -m appuser && \
+    mkdir -p /app/images/pets && \
+    chown -R appuser:appuser /app/images
+
+USER appuser
+
+ENTRYPOINT ["sh", "-c", "\
+    export DB_PASSWORD=$(cat /run/secrets/db_password) && \
+    export MAIL_PASSWORD=$(cat /run/secrets/mail_password) && \
+    export API_KEY=$(cat /run/secrets/api_key) && \
+    exec java ${JAVA_OPTS} -Dserver.port=${CORE_SERVICE_PORT} -jar app.jar\
+"]
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/resources/application.yml ===
+
+spring:
+  application:
+    name: core-service
+  datasource:
+    url: jdbc:mariadb://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.mariadb.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    show-sql: false
+    database-platform: org.hibernate.dialect.MariaDBDialect
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: vitalpaw.devtester007@gmail.com
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
+server:
+  port: ${CORE_SERVICE_PORT:8080}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+api:
+  key: ${API_KEY}
+app:
+  image:
+    storage-path: /app/images/pets
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/breed/controller/BreedController.java ===
+
+package com.vitalpaw.coreservice.breed.controller;
+
+import com.vitalpaw.coreservice.breed.dto.BreedDTO;
+import com.vitalpaw.coreservice.breed.service.BreedService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/breeds")
+@SecurityRequirement(name = "ApiKeyAuth")
+public class BreedController {
+    @Autowired
+    private BreedService breedService;
+
+    @Operation(summary = "Crear una nueva raza", description = "Registra una nueva raza de mascota con umbrales de signos vitales.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Raza creada exitosamente"),
+        @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos"),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante"),
+        @ApiResponse(responseCode = "409", description = "Nombre de raza duplicado")
+    })
+    @PostMapping
+    public ResponseEntity<BreedDTO> createBreed(@Valid @RequestBody BreedDTO dto) {
+        BreedDTO createdBreed = breedService.createBreed(dto);
+        return ResponseEntity.ok(createdBreed);
+    }
+
+    @Operation(summary = "Obtener raza por ID", description = "Devuelve los detalles de una raza según su ID.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Raza encontrada"),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante"),
+        @ApiResponse(responseCode = "404", description = "Raza no encontrada")
+    })
+    @GetMapping("/{id}")
+    public ResponseEntity<BreedDTO> getBreed(@PathVariable Long id) {
+        return ResponseEntity.ok(breedService.getBreedById(id));
+    }
+
+    @Operation(summary = "Listar todas las razas", description = "Devuelve una lista de todas las razas registradas con sus nombres y detalles.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Lista de razas obtenida exitosamente"),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante")
+    })
+    @GetMapping
+    public ResponseEntity<List<BreedDTO>> getAllBreeds() {
+        return ResponseEntity.ok(breedService.getAllBreeds());
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/breed/dto/BreedDTO.java ===
+
+package com.vitalpaw.coreservice.breed.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.*;
+import lombok.Data;
+
+@Data
+@Schema(description = "Datos públicos de una raza de mascota")
+public class BreedDTO {
+
+    @Schema(example = "1", description = "ID único de la raza")
+    private Long id;
+
+    @NotBlank(message = "El nombre es obligatorio")
+    @Size(max = 200, message = "El nombre no puede exceder los 200 caracteres")
+    @Schema(example = "Labrador Retriever", description = "Nombre de la raza")
+    private String name;
+
+    @NotBlank(message = "La especie es obligatoria")
+    @Size(max = 100, message = "La especie no puede exceder los 100 caracteres")
+    @Schema(example = "Perro", description = "Especie a la que pertenece la raza")
+    private String species;
+
+    @NotNull(message = "La temperatura máxima es obligatoria")
+    @Positive(message = "Debe ser un número positivo")
+    @Schema(example = "39.5", description = "Temperatura corporal máxima normal para esta raza")
+    private Float maxTemperature;
+
+    @NotNull(message = "La temperatura mínima es obligatoria")
+    @Positive(message = "Debe ser un número positivo")
+    @Schema(example = "37.5", description = "Temperatura corporal mínima normal para esta raza")
+    private Float minTemperature;
+
+    @NotNull(message = "El pulso máximo es obligatorio")
+    @Positive(message = "Debe ser un número positivo")
+    @Schema(example = "120", description = "Pulso cardíaco máximo normal para esta raza")
+    private Integer maxHeartRate;
+
+    @NotNull(message = "El pulso mínimo es obligatorio")
+    @Positive(message = "Debe ser un número positivo")
+    @Schema(example = "60", description = "Pulso cardíaco mínimo normal para esta raza")
+    private Integer minHeartRate;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/breed/model/Breed.java ===
+
+package com.vitalpaw.coreservice.breed.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+
+@Data
+@Entity
+@Table(name = "breeds")
+public class Breed {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "name", nullable = false, length = 200, unique = true)
+    private String name;
+
+    @Column(name = "species", nullable = false, length = 100)
+    private String species;
+
+    @Column(name = "max_temperature", nullable = false)
+    private Float maxTemperature;
+
+    @Column(name = "min_temperature", nullable = false)
+    private Float minTemperature;
+
+    @Column(name = "max_heart_rate", nullable = false)
+    private Integer maxHeartRate;
+
+    @Column(name = "min_heart_rate", nullable = false)
+    private Integer minHeartRate;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/breed/repository/BreedRepository.java ===
+
+
+package com.vitalpaw.coreservice.breed.repository;
+
+import com.vitalpaw.coreservice.breed.model.Breed;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface BreedRepository extends JpaRepository<Breed, Long> {
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/breed/service/BreedService.java ===
+
+package com.vitalpaw.coreservice.breed.service;
+
+import com.vitalpaw.coreservice.breed.dto.BreedDTO;
+import com.vitalpaw.coreservice.breed.model.Breed;
+import com.vitalpaw.coreservice.breed.repository.BreedRepository;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class BreedService {
+    @Autowired
+    private BreedRepository breedRepository;
+
+    @Transactional
+    public BreedDTO createBreed(BreedDTO dto) {
+        Breed breed = new Breed();
+        breed.setName(dto.getName());
+        breed.setSpecies(dto.getSpecies());
+        breed.setMaxTemperature(dto.getMaxTemperature());
+        breed.setMinTemperature(dto.getMinTemperature());
+        breed.setMaxHeartRate(dto.getMaxHeartRate());
+        breed.setMinHeartRate(dto.getMinHeartRate());
+
+        breedRepository.save(breed);
+        return mapToDTO(breed);
+    }
+
+    @Transactional(readOnly = true)
+    public BreedDTO getBreedById(Long id) {
+        Breed breed = breedRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Breed not found"));
+        return mapToDTO(breed);
+    }
+
+    @Transactional(readOnly = true)
+    public List<BreedDTO> getAllBreeds() {
+        List<Breed> breeds = breedRepository.findAll();
+        return breeds.stream().map(this::mapToDTO).collect(Collectors.toList());
+    }
+
+    private BreedDTO mapToDTO(Breed breed) {
+        BreedDTO dto = new BreedDTO();
+        dto.setId(breed.getId());
+        dto.setName(breed.getName());
+        dto.setSpecies(breed.getSpecies());
+        dto.setMaxTemperature(breed.getMaxTemperature());
+        dto.setMinTemperature(breed.getMinTemperature());
+        dto.setMaxHeartRate(breed.getMaxHeartRate());
+        dto.setMinHeartRate(breed.getMinHeartRate());
+        return dto;
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/config/GlobalExceptionHandler.java ===
+
+package com.vitalpaw.coreservice.config;
+
+import jakarta.mail.MessagingException;
+import jakarta.validation.ConstraintViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MultipartException;
+
+import java.io.IOException;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex, WebRequest request) {
+        Map<String, Object> errorDetails = new HashMap<>();
+        errorDetails.put("timestamp", LocalDateTime.now());
+        errorDetails.put("message", ex.getMessage());
+        errorDetails.put("path", request.getDescription(false));
+        return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST); // Typo: Removed extra space
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleConstraintViolation(ConstraintViolationException ex, WebRequest request) {
+        Map<String, Object> errorDetails = new HashMap<>();
+        errorDetails.put("timestamp", LocalDateTime.now());
+        errorDetails.put("message", "Validation error: " + ex.getMessage()); // Typo in message
+        errorDetails.put("path", request.getDescription(false));
+        return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(MessagingException.class)
+    public ResponseEntity<Map<String, Object>> handleMessagingException(MessagingException ex, WebRequest request) {
+        Map<String, Object> errorDetails = new HashMap<>();
+        errorDetails.put("timestamp", LocalDateTime.now());
+        errorDetails.put("message", "Failed to send email: " + ex.getMessage());
+        errorDetails.put("path", request.getDescription(false));
+        return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<Map<String, Object>> handleMultipartException(MultipartException ex, WebRequest request) {
+        Map<String, Object> errorDetails = new HashMap<>();
+        errorDetails.put("timestamp", LocalDateTime.now());
+        errorDetails.put("message", "File upload error: " + ex.getMessage());
+        errorDetails.put("path", request.getDescription(false)); // Typo in method name
+        return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity<Map<String, Object>> handleIOException(IOException ex, WebRequest request) {
+        Map<String, Object> errorDetails = new HashMap<>();
+        errorDetails.put("timestamp", LocalDateTime.now());
+        errorDetails.put("message", "Error processing file: " + ex.getMessage());
+        errorDetails.put("path", request.getDescription(false));
+        return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleGeneralException(Exception ex, WebRequest request) {
+        Map<String, Object> errorDetails = new HashMap<>();
+        errorDetails.put("timestamp", LocalDateTime.now());
+        errorDetails.put("message", "An unexpected error occurred: " + ex.getMessage());
+        errorDetails.put("path", request.getDescription(false));
+        return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR); // Typo in variable name
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/config/OpenApiConfig.java ===
+
+package com.vitalpaw.coreservice.config;
+
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class OpenApiConfig {
+
+    @Bean
+    public OpenAPI customOpenAPI() {
+        return new OpenAPI()
+                .info(new Info()
+                        .title("VitalPaw Core Service API")
+                        .description("API documentation for the VitalPaw Core Service, handling users, pets, breeds, devices, and alerts.")
+                        .version("0.0.1-SNAPSHOT"))
+                .addSecurityItem(new SecurityRequirement().addList("ApiKeyAuth"))
+                .components(new io.swagger.v3.oas.models.Components()
+                        .addSecuritySchemes("ApiKeyAuth", new SecurityScheme()
+                                .name("X-API-Key")
+                                .type(SecurityScheme.Type.APIKEY)
+                                .in(SecurityScheme.In.HEADER)
+                                .description("API Key required for all endpoints except /actuator/health")));
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/config/CorsConfig.java ===
+
+package com.vitalpaw.coreservice;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+public class CorsConfig implements WebMvcConfigurer {
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**")
+                .allowedOrigins("*")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("X-API-Key", "Content-Type", "Accept")
+                .allowCredentials(false)
+                .maxAge(3600);
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/controller/PetController.java ===
+
+package com.vitalpaw.coreservice.pet.controller;
+
+import com.vitalpaw.coreservice.pet.dto.PetCreateDTO;
+import com.vitalpaw.coreservice.pet.dto.PetDTO;
+import com.vitalpaw.coreservice.pet.service.PetService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+@RestController
+@RequestMapping("/api/pets")
+@SecurityRequirement(name = "ApiKeyAuth")
+public class PetController {
+
+    @Autowired
+    private PetService petService;
+
+    @Value("${app.image.storage-path}")
+    private String uploadDir;
+
+    @Operation(summary = "Crear una nueva mascota", description = "Registra una nueva mascota en el sistema.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Mascota creada exitosamente", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = PetDTO.class))
+        }),
+        @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @PostMapping
+    public ResponseEntity<PetDTO> createPet(@Valid @RequestBody PetCreateDTO dto) {
+        PetDTO createdPet = petService.createPet(dto);
+        return ResponseEntity.ok(createdPet);
+    }
+
+    @Operation(summary = "Obtener mascota por ID", description = "Devuelve los datos de una mascota específica.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Datos de mascota devueltos", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = PetDTO.class))
+        }),
+        @ApiResponse(responseCode = "404", description = "Mascota no encontrada", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @GetMapping("/{id}")
+    public ResponseEntity<PetDTO> getPet(
+        @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long id) {
+        return ResponseEntity.ok(petService.getPetById(id));
+    }
+
+    @Operation(summary = "Actualizar mascota", description = "Modifica los datos de una mascota existente.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Mascota actualizada", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = PetDTO.class))
+        }),
+        @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos", content = @Content),
+        @ApiResponse(responseCode = "404", description = "Mascota no encontrada", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @PutMapping("/{id}")
+    public ResponseEntity<PetDTO> updatePet(
+        @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long id,
+        @Valid @RequestBody PetCreateDTO dto) {
+        return ResponseEntity.ok(petService.updatePet(id, dto));
+    }
+
+    @Operation(summary = "Subir foto de mascota", description = "Sube una imagen para la mascota especificada.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Foto subida exitosamente", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = PetDTO.class))
+        }),
+        @ApiResponse(responseCode = "400", description = "Archivo inválido o demasiado grande", content = @Content),
+        @ApiResponse(responseCode = "404", description = "Mascota no encontrada", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content),
+        @ApiResponse(responseCode = "500", description = "Error al guardar la imagen", content = @Content)
+    })
+    @PostMapping(value = "/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<PetDTO> uploadPetPhoto(
+        @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long id,
+        @RequestParam("file") MultipartFile file) throws IOException {
+        return ResponseEntity.ok(petService.uploadPetPhoto(id, file));
+    }
+
+    @Operation(summary = "Obtener foto de mascota", description = "Devuelve la imagen de la mascota especificada por su ID.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Imagen de la mascota devuelta", content = {
+            @Content(mediaType = "image/jpeg", schema = @Schema(type = "string", format = "binary")),
+            @Content(mediaType = "image/png", schema = @Schema(type = "string", format = "binary"))
+        }),
+        @ApiResponse(responseCode = "404", description = "Mascota o imagen no encontrada", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @GetMapping(value = "/{id}/photo", produces = {MediaType.IMAGE_JPEG_VALUE, MediaType.IMAGE_PNG_VALUE})
+    public ResponseEntity<Resource> getPetPhoto(
+        @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long id) throws IOException {
+        PetDTO pet = petService.getPetById(id);
+        if (pet.getPhoto() == null || pet.getPhoto().isEmpty()) {
+            throw new IllegalArgumentException("No photo found for pet with ID: " + id);
+        }
+
+        Path filePath = Paths.get(uploadDir).resolve(pet.getPhoto().replace("/images/pets/", ""));
+        Resource resource = new UrlResource(filePath.toUri());
+        if (!resource.exists() || !resource.isReadable()) {
+            throw new IllegalArgumentException("Photo file not found for pet with ID: " + id);
+        }
+
+        String contentType = pet.getPhoto().endsWith(".jpg") || pet.getPhoto().endsWith(".jpeg") ?
+            MediaType.IMAGE_JPEG_VALUE : MediaType.IMAGE_PNG_VALUE;
+
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(contentType))
+            .body(resource);
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/controller/PetDeviceController.java ===
+
+package com.vitalpaw.coreservice.pet.controller;
+
+import com.vitalpaw.coreservice.pet.dto.PetDeviceDTO;
+import com.vitalpaw.coreservice.pet.service.PetDeviceService;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/devices")
+public class PetDeviceController {
+    @Autowired
+    private PetDeviceService petDeviceService;
+
+    @PostMapping
+    public ResponseEntity<PetDeviceDTO> createPetDevice(@Valid @RequestBody PetDeviceDTO dto) {
+        PetDeviceDTO createdDevice = petDeviceService.createPetDevice(dto);
+        return ResponseEntity.ok(createdDevice);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<PetDeviceDTO> getPetDevice(@PathVariable Long id) {
+        return ResponseEntity.ok(petDeviceService.getPetDeviceById(id));
+    }
+
+    @GetMapping("/device/{deviceId}")
+    public ResponseEntity<PetDeviceDTO> getPetDeviceByDeviceId(@PathVariable String deviceId) {
+        return ResponseEntity.ok(petDeviceService.getPetDeviceByDeviceId(deviceId));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<PetDeviceDTO> updatePetDevice(@PathVariable Long id, @Valid @RequestBody PetDeviceDTO dto) {
+        return ResponseEntity.ok(petDeviceService.updatePetDevice(id, dto));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deletePetDevice(@PathVariable Long id) {
+        petDeviceService.deletePetDevice(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/dto/PetCreateDTO.java ===
+
+package com.vitalpaw.coreservice.pet.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.*;
+import lombok.Data;
+import java.time.LocalDate;
+
+@Data
+@Schema(description = "Datos necesarios para crear una mascota")
+public class PetCreateDTO {
+
+    @NotBlank
+    @Size(max = 100)
+    @Schema(example = "Max", description = "Nombre de la mascota")
+    private String name;
+
+    @NotBlank
+    @Size(max = 100)
+    @Schema(example = "Perro", description = "Especie de la mascota")
+    private String species;
+
+    @Schema(example = "1", description = "ID de la raza asociada (opcional)")
+    private Long breedId;
+
+    @Schema(example = "2020-05-15", description = "Fecha de nacimiento de la mascota")
+    private LocalDate birthDate;
+
+    @NotNull
+    @Schema(example = "1", description = "ID del dueño de la mascota")
+    private Long ownerId;
+
+    @Size(max = 255)
+    @Schema(example = "https://example.com/photo.jpg",  description = "URL de foto de la mascota (opcional)")
+    private String photo;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/dto/PetDTO.java ===
+
+package com.vitalpaw.coreservice.pet.dto;
+
+import lombok.Data;
+import java.time.LocalDate;
+
+@Data
+public class PetDTO {
+    private Long id;
+    private String name;
+    private String species;
+    private Long breedId;
+    private LocalDate birthDate;
+    private Long ownerId;
+    private String photo;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/dto/PetDeviceDTO.java ===
+
+package com.vitalpaw.coreservice.pet.dto;
+
+import lombok.Data;
+import jakarta.validation.constraints.*;
+
+@Data
+public class PetDeviceDTO {
+    private Long id;
+
+    @NotNull
+    private Long petId;
+
+    @NotBlank
+    @Size(max = 50)
+    private String deviceId;
+
+    private Boolean isActive;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/model/Pet.java ===
+
+package com.vitalpaw.coreservice.pet.model;
+
+import com.vitalpaw.coreservice.breed.model.Breed;
+import com.vitalpaw.coreservice.user.model.User;
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "pets")
+public class Pet {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "name", nullable = false, length = 100)
+    private String name;
+
+    @Column(name = "species", nullable = false, length = 100)
+    private String species;
+
+    @ManyToOne
+    @JoinColumn(name = "breed_id")
+    private Breed breed;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
+    @ManyToOne
+    @JoinColumn(name = "owner_id", nullable = false)
+    private User owner;
+
+    @Column(name = "photo")
+    private String photo;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/model/PetDevice.java ===
+
+package com.vitalpaw.coreservice.pet.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "pet_devices")
+public class PetDevice {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "pet_id", nullable = false)
+    private Pet pet;
+
+    @Column(name = "device_id", nullable = false, unique = true, length = 50)
+    private String deviceId;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/repository/PetDeviceRepository.java ===
+
+package com.vitalpaw.coreservice.pet.repository;
+
+import com.vitalpaw.coreservice.pet.model.PetDevice;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface PetDeviceRepository extends JpaRepository<PetDevice, Long> {
+    Optional<PetDevice> findByDeviceId(String deviceId);
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/repository/PetRepository.java ===
+
+package com.vitalpaw.coreservice.pet.repository;
+
+import com.vitalpaw.coreservice.pet.model.Pet;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface PetRepository extends JpaRepository<Pet, Long> {
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/service/PetDeviceService.java ===
+
+package com.vitalpaw.coreservice.pet.service;
+
+import com.vitalpaw.coreservice.pet.dto.PetDeviceDTO;
+import com.vitalpaw.coreservice.pet.model.Pet;
+import com.vitalpaw.coreservice.pet.model.PetDevice;
+import com.vitalpaw.coreservice.pet.repository.PetDeviceRepository;
+import com.vitalpaw.coreservice.pet.repository.PetRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class PetDeviceService {
+    @Autowired
+    private PetDeviceRepository petDeviceRepository;
+
+    @Autowired
+    private PetRepository petRepository;
+
+    @Transactional
+    public PetDeviceDTO createPetDevice(PetDeviceDTO dto) {
+        Pet pet = petRepository.findById(dto.getPetId())
+                .orElseThrow(() -> new IllegalArgumentException("Pet not found"));
+        
+        PetDevice petDevice = new PetDevice();
+        petDevice.setPet(pet);
+        petDevice.setDeviceId(dto.getDeviceId());
+        petDevice.setIsActive(dto.getIsActive() != null ? dto.getIsActive() : true);
+
+        petDeviceRepository.save(petDevice);
+        return mapToDTO(petDevice);
+    }
+
+    @Transactional(readOnly = true)
+    public PetDeviceDTO getPetDeviceById(Long id) {
+        PetDevice petDevice = petDeviceRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Pet device not found"));
+        return mapToDTO(petDevice);
+    }
+
+    @Transactional(readOnly = true)
+    public PetDeviceDTO getPetDeviceByDeviceId(String deviceId) {
+        PetDevice petDevice = petDeviceRepository.findByDeviceId(deviceId)
+                .orElseThrow(() -> new IllegalArgumentException("Pet device not found"));
+        return mapToDTO(petDevice);
+    }
+
+    @Transactional
+    public PetDeviceDTO updatePetDevice(Long id, PetDeviceDTO dto) {
+        PetDevice petDevice = petDeviceRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Pet device not found"));
+        
+        if (dto.getPetId() != null) {
+            Pet pet = petRepository.findById(dto.getPetId())
+                    .orElseThrow(() -> new IllegalArgumentException("Pet not found"));
+            petDevice.setPet(pet);
+        }
+        if (dto.getDeviceId() != null) {
+            petDevice.setDeviceId(dto.getDeviceId());
+        }
+        if (dto.getIsActive() != null) {
+            petDevice.setIsActive(dto.getIsActive());
+        }
+
+        petDeviceRepository.save(petDevice);
+        return mapToDTO(petDevice);
+    }
+
+    @Transactional
+    public void deletePetDevice(Long id) {
+        if (!petDeviceRepository.existsById(id)) {
+            throw new IllegalArgumentException("Pet device not found");
+        }
+        petDeviceRepository.deleteById(id);
+    }
+
+    private PetDeviceDTO mapToDTO(PetDevice petDevice) {
+        PetDeviceDTO dto = new PetDeviceDTO();
+        dto.setId(petDevice.getId());
+        dto.setPetId(petDevice.getPet().getId());
+        dto.setDeviceId(petDevice.getDeviceId());
+        dto.setIsActive(petDevice.getIsActive());
+        return dto;
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/pet/service/PetService.java ===
+
+package com.vitalpaw.coreservice.pet.service;
+
+import com.vitalpaw.coreservice.pet.dto.PetCreateDTO;
+import com.vitalpaw.coreservice.pet.dto.PetDTO;
+import com.vitalpaw.coreservice.pet.model.Pet;
+import com.vitalpaw.coreservice.pet.repository.PetRepository;
+import com.vitalpaw.coreservice.user.model.User;
+import com.vitalpaw.coreservice.user.repository.UserRepository;
+import com.vitalpaw.coreservice.breed.model.Breed;
+import com.vitalpaw.coreservice.breed.repository.BreedRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+@Service
+public class PetService {
+    @Autowired
+    private PetRepository petRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private BreedRepository breedRepository;
+
+    @Value("${app.image.storage-path}")
+    private String uploadDir;
+
+    @Transactional
+    public PetDTO createPet(PetCreateDTO dto) {
+        Pet pet = new Pet();
+        pet.setName(dto.getName());
+        pet.setSpecies(dto.getSpecies());
+        if (dto.getBreedId() != null) {
+            Breed breed = breedRepository.findById(dto.getBreedId())
+                    .orElseThrow(() -> new IllegalArgumentException("Breed not found"));
+            pet.setBreed(breed);
+        }
+        pet.setBirthDate(dto.getBirthDate());
+        User owner = userRepository.findById(dto.getOwnerId())
+                .orElseThrow(() -> new IllegalArgumentException("Owner not found"));
+        pet.setOwner(owner);
+        pet.setPhoto(dto.getPhoto());
+
+        petRepository.save(pet);
+        return mapToDTO(pet);
+    }
+
+    @Transactional(readOnly = true)
+    public PetDTO getPetById(Long id) {
+        Pet pet = petRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Pet not found"));
+        return mapToDTO(pet);
+    }
+
+    @Transactional
+    public PetDTO updatePet(Long id, PetCreateDTO dto) {
+        Pet pet = petRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Pet not found"));
+        
+        if (dto.getName() != null) pet.setName(dto.getName());
+        if (dto.getSpecies() != null) pet.setSpecies(dto.getSpecies());
+        if (dto.getBreedId() != null) {
+            Breed breed = breedRepository.findById(dto.getBreedId())
+                    .orElseThrow(() -> new IllegalArgumentException("Breed not found"));
+            pet.setBreed(breed);
+        }
+        if (dto.getBirthDate() != null) pet.setBirthDate(dto.getBirthDate());
+        if (dto.getOwnerId() != null) {
+            User owner = userRepository.findById(dto.getOwnerId())
+                    .orElseThrow(() -> new IllegalArgumentException("Owner not found"));
+            pet.setOwner(owner);
+        }
+        if (dto.getPhoto() != null) pet.setPhoto(dto.getPhoto());
+
+        petRepository.save(pet);
+        return mapToDTO(pet);
+    }
+
+    @Transactional
+    public void deletePet(Long id) {
+        if (!petRepository.existsById(id)) {
+            throw new IllegalArgumentException("Pet not found");
+        }
+        petRepository.deleteById(id);
+    }
+
+    @Transactional
+    public PetDTO uploadPetPhoto(Long id, MultipartFile file) throws IOException {
+        Pet pet = petRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Pet not found"));
+
+        // Validate file
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("File is empty");
+        }
+        String contentType = file.getContentType();
+        if (!contentType.equals("image/jpeg") && !contentType.equals("image/png")) {
+            throw new IllegalArgumentException("Only JPEG and PNG images are supported");
+        }
+
+        // Create directory if it doesn't exist
+        Path dirPath = Paths.get(uploadDir);
+        if (!Files.exists(dirPath)) {
+            Files.createDirectories(dirPath);
+        }
+
+        // Generate unique filename: userId_petId_timestamp.extension
+        String extension = contentType.equals("image/jpeg") ? ".jpg" : ".png";
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss"));
+        String filename = String.format("user_%d_pet_%d_%s%s", pet.getOwner().getId(), id, timestamp, extension);
+        Path filePath = dirPath.resolve(filename);
+
+        // Save file
+        Files.write(filePath, file.getBytes());
+
+        // Update pet's photo path
+        String relativePath = "/images/pets/" + filename;
+        pet.setPhoto(relativePath);
+        petRepository.save(pet);
+
+        return mapToDTO(pet);
+    }
+
+    private PetDTO mapToDTO(Pet pet) {
+        PetDTO dto = new PetDTO();
+        dto.setId(pet.getId());
+        dto.setName(pet.getName());
+        dto.setSpecies(pet.getSpecies());
+        dto.setBreedId(pet.getBreed() != null ? pet.getBreed().getId() : null);
+        dto.setBirthDate(pet.getBirthDate());
+        dto.setOwnerId(pet.getOwner().getId());
+        dto.setPhoto(pet.getPhoto());
+        return dto;
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/security/ApiKeyAuthentication.java ===
+
+package com.vitalpaw.coreservice.security;
+
+import org.springframework.security.authentication.AbstractAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+
+import java.util.Collections;
+
+public class ApiKeyAuthentication extends AbstractAuthenticationToken {
+
+    private final Object principal;
+
+    public ApiKeyAuthentication(String apiKey) {
+        super(Collections.singletonList(new SimpleGrantedAuthority("ROLE_API")));
+        this.principal = apiKey;
+        setAuthenticated(true);
+    }
+
+    @Override
+    public Object getCredentials() {
+        return null;
+    }
+
+    @Override
+    public Object getPrincipal() {
+        return principal;
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/security/ApiKeyFilter.java ===
+
+package com.vitalpaw.coreservice.security;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.security.core.Authentication;
+
+import java.io.IOException;
+
+@Component
+public class ApiKeyFilter extends OncePerRequestFilter {
+    @Value("${api.key}")
+    private String apiKey;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
+
+        String uri = request.getRequestURI();
+        if (uri.startsWith("/actuator/health") ||
+            uri.startsWith("/v3/api-docs") ||
+            uri.startsWith("/swagger-ui") ||
+            uri.startsWith("/api/users/confirm") ||
+            uri.startsWith("/api/users/password-reset")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        String requestApiKey = request.getHeader("X-API-Key");
+
+        if (requestApiKey == null || !requestApiKey.equals(apiKey)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.getWriter().write("Invalid or missing API Key");
+            return;
+        }
+
+        Authentication authentication = new ApiKeyAuthentication(apiKey);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        filterChain.doFilter(request, response);
+    }
+}
+
+
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/security/PasswdEncoder.java ===
+
+package com.vitalpaw.coreservice.security;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+@Configuration
+public class PasswdEncoder {
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/security/SecurityConfig.java ===
+
+package com.vitalpaw.coreservice.security;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    @Autowired
+    private ApiKeyFilter apiKeyFilter;
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .addFilterBefore(apiKeyFilter, UsernamePasswordAuthenticationFilter.class)
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(
+                    "/actuator/health",
+                    "/v3/api-docs/**",
+                    "/swagger-ui/**",
+                    "/swagger-ui.html",
+                    "/api/users/confirm/**",
+                    "/api/users/password-reset/request",
+                    "/api/users/password-reset"
+                ).permitAll()
+                .anyRequest().authenticated()
+            );
+
+        return http.build();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/controller/UserController.java ===
+
+package com.vitalpaw.coreservice.user.controller;
+
+import com.vitalpaw.coreservice.user.dto.PasswordChangeDTO;
+import com.vitalpaw.coreservice.user.dto.UserCreateDTO;
+import com.vitalpaw.coreservice.user.dto.UserDTO;
+import com.vitalpaw.coreservice.user.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.mail.MessagingException;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/users")
+@SecurityRequirement(name = "ApiKeyAuth")
+public class UserController {
+
+    @Autowired
+    private UserService userService;
+
+    @Operation(summary = "Crear un nuevo usuario", description = "Registra un nuevo usuario en el sistema.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Usuario creado exitosamente", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = UserDTO.class))
+        }),
+        @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content),
+        @ApiResponse(responseCode = "409", description = "Correo o nombre de usuario duplicado", content = @Content),
+        @ApiResponse(responseCode = "500", description = "Error al enviar el correo de confirmación", content = @Content)
+    })
+    @PostMapping
+    public ResponseEntity<UserDTO> createUser(@Valid @RequestBody UserCreateDTO dto) {
+        UserDTO createdUser = userService.createUser(dto);
+        return ResponseEntity.ok(createdUser);
+    }
+
+    @Operation(summary = "Obtener usuario por ID", description = "Devuelve los datos de un usuario específico.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Datos del usuario devueltos", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = UserDTO.class))
+        }),
+        @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @GetMapping("/{id}")
+    public ResponseEntity<UserDTO> getUser(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getUserById(id));
+    }
+
+    @Operation(summary = "Actualizar usuario", description = "Modifica los datos de un usuario existente.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Usuario actualizado", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = UserDTO.class))
+        }),
+        @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos", content = @Content),
+        @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @PutMapping("/{id}")
+    public ResponseEntity<UserDTO> updateUser(@PathVariable Long id, @Valid @RequestBody UserCreateDTO dto) {
+        return ResponseEntity.ok(userService.updateUser(id, dto));
+    }
+
+    @Operation(summary = "Eliminar usuario", description = "Elimina un usuario del sistema.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "204", description = "Usuario eliminado exitosamente"),
+        @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+        userService.deleteUser(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Confirmar cuenta de usuario", description = "Confirma la cuenta del usuario usando un token.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Cuenta confirmada exitosamente", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = UserDTO.class))
+        }),
+        @ApiResponse(responseCode = "400", description = "Token inválido o expirado", content = @Content)
+    })
+    @GetMapping("/confirm/{token}")
+    public ResponseEntity<UserDTO> confirmAccount(@PathVariable String token) {
+        UserDTO confirmedUser = userService.confirmAccount(token);
+        return ResponseEntity.ok(confirmedUser);
+    }
+
+    @Operation(summary = "Solicitar restablecimiento de contraseña", description = "Envía un token de restablecimiento al correo del usuario.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Solicitud procesada y token enviado exitosamente"),
+        @ApiResponse(responseCode = "404", description = "Correo no encontrado", content = @Content),
+        @ApiResponse(responseCode = "500", description = "Error al enviar el correo", content = @Content)
+    })
+    @PostMapping("/password-reset/request")
+    public ResponseEntity<Void> requestPasswordReset(@RequestParam String email) {
+        try {
+            userService.requestPasswordReset(email);
+            return ResponseEntity.ok().build();
+        } catch (MessagingException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @Operation(summary = "Restablecer contraseña", description = "Actualiza la contraseña usando el token enviado al correo.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Contraseña restablecida exitosamente", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = UserDTO.class))
+        }),
+        @ApiResponse(responseCode = "400", description = "Token inválido o expirado", content = @Content)
+    })
+    @PostMapping("/password-reset")
+    public ResponseEntity<UserDTO> resetPassword(@RequestParam String token, @RequestParam String newPassword) {
+        UserDTO updatedUser = userService.resetPassword(token, newPassword);
+        return ResponseEntity.ok(updatedUser);
+    }
+
+    @Operation(summary = "Cambiar contraseña de usuario", description = "Actualiza la contraseña de un usuario autenticado.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Contraseña cambiada exitosamente", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = UserDTO.class))
+        }),
+        @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos", content = @Content),
+        @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @PostMapping("/{id}/change-password")
+    public ResponseEntity<UserDTO> changePassword(@PathVariable Long id, @Valid @RequestBody PasswordChangeDTO dto) {
+        return ResponseEntity.ok(userService.changePassword(id, dto.getNewPassword()));
+    }
+
+    @Operation(summary = "Obtener token de confirmación (solo para pruebas)", description = "Devuelve el token de confirmación para un usuario dado.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Token devuelto exitosamente", content = {
+            @Content(mediaType = "text/plain")
+        }),
+        @ApiResponse(responseCode = "404", description = "Usuario o token no encontrado", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @GetMapping("/confirmation-token/{userId}")
+    public ResponseEntity<String> getConfirmationToken(@PathVariable Long userId) {
+        String token = userService.getConfirmationToken(userId);
+        return ResponseEntity.ok(token);
+    }
+
+    @Operation(summary = "Obtener token de restablecimiento de contraseña (solo para pruebas)", description = "Devuelve el token de restablecimiento para un usuario dado.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Token devuelto exitosamente", content = {
+            @Content(mediaType = "text/plain")
+        }),
+        @ApiResponse(responseCode = "404", description = "Usuario o token no encontrado", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @GetMapping("/password-reset-token/{userId}")
+    public ResponseEntity<String> getPasswordResetToken(@PathVariable Long userId) {
+        String token = userService.getPasswordResetToken(userId);
+        return ResponseEntity.ok(token);
+    }
+
+    @Operation(summary = "Actualizar FCM Token", description = "Actualiza el token FCM para notificaciones push del usuario.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Token FCM actualizado exitosamente", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = UserDTO.class))
+        }),
+        @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @PutMapping("/{id}/fcm-token")
+    public ResponseEntity<UserDTO> updateFcmToken(@PathVariable Long id, @RequestParam String fcmToken) {
+        UserDTO updatedUser = userService.updateFcmToken(id, fcmToken);
+        return ResponseEntity.ok(updatedUser);
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/dto/PasswordChangeDTO.java ===
+
+package com.vitalpaw.coreservice.user.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+@Data
+@Schema(description = "Datos necesarios para cambiar la contraseña de un usuario")
+public class PasswordChangeDTO {
+
+    @NotBlank(message = "La nueva contraseña es obligatoria")
+    @Size(min = 8, max = 128, message = "La contraseña debe tener entre 8 y 128 caracteres")
+    @Schema(example = "NuevaContrasena123!", description = "Nueva contraseña del usuario")
+    private String newPassword;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/dto/UserCreateDTO.java ===
+
+package com.vitalpaw.coreservice.user.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.*;
+import lombok.Data;
+
+@Data
+@Schema(description = "Datos necesarios para crear un nuevo usuario")
+public class UserCreateDTO {
+
+    @NotBlank(message = "El nombre es obligatorio")
+    @Size(max = 100, message = "El nombre no puede exceder los 100 caracteres")
+    @Schema(example = "Carlos", description = "Nombre del usuario")
+    private String firstName;
+
+    @Size(max = 100, message = "El apellido no puede exceder los 100 caracteres")
+    @Schema(example = "Huamani", description = "Apellido del usuario (opcional)")
+    private String lastName;
+
+    @NotBlank(message = "El correo electrónico es obligatorio")
+    @Email(message = "Debe ser un correo electrónico válido")
+    @Schema(example = "carlos@example.com", description = "Correo electrónico único del usuario")
+    private String email;
+
+    @NotBlank(message = "La contraseña es obligatoria")
+    @Size(min = 8, max = 128, message = "La contraseña debe tener entre 8 y 128 caracteres")
+    @Schema(example = "SecurePass123!", description = "Contraseña del usuario")
+    private String password;
+
+    @Size(max = 20, message = "El número de teléfono no puede exceder los 20 dígitos")
+    @Schema(example = "+51987654321", description = "Número de teléfono del usuario (opcional)")
+    private String phone;
+
+    @Size(max = 100, message = "La ciudad no puede exceder los 100 caracteres")
+    @Schema(example = "Lima", description = "Ciudad donde vive el usuario (opcional)")
+    private String city;
+
+    @NotBlank(message = "El nombre de usuario es obligatorio")
+    @Size(max = 50, message = "El nombre de usuario no puede exceder los 50 caracteres")
+    @Schema(example = "carloshuamani", description = "Nombre de usuario único")
+    private String username;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/dto/UserDTO.java ===
+
+package com.vitalpaw.coreservice.user.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Data;
+
+@Data
+@Schema(description = "Datos públicos de un usuario")
+public class UserDTO {
+
+    @Schema(example = "1", description = "ID único del usuario")
+    private Long id;
+
+    @Schema(example = "Carlos", description = "Nombre del usuario")
+    private String firstName;
+
+    @Schema(example = "Huamani", description = "Apellido del usuario")
+    private String lastName;
+
+    @Schema(example = "carlos@example.com", description = "Correo electrónico del usuario")
+    private String email;
+
+    @Schema(example = "+51987654321", description = "Teléfono del usuario")
+    private String phone;
+
+    @Schema(example = "Lima", description = "Ciudad donde vive el usuario")
+    private String city;
+
+    @Schema(example = "carloshuamani", description = "Nombre de usuario único")
+    private String username;
+
+    @Schema(example = "true", description = "Indica si la cuenta fue confirmada")
+    private Boolean isConfirmed;
+
+    @Schema(example = "fcm_token_example", description = "Token FCM para notificaciones push")
+    private String fcmToken;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/model/PasswordResetToken.java ===
+
+package com.vitalpaw.coreservice.user.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "password_reset_tokens")
+public class PasswordResetToken {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @OneToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Column(name = "token", nullable = false, unique = true, length = 4)
+    private String token;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "expires_at", nullable = false)
+    private LocalDateTime expiresAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/model/User.java ===
+
+package com.vitalpaw.coreservice.user.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "users")
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "first_name", nullable = false, length = 100)
+    private String firstName;
+
+    @Column(name = "last_name", length = 100)
+    private String lastName;
+
+    @Column(name = "email", nullable = false, unique = true)
+    private String email;
+
+    @Column(name = "password", nullable = false, length = 128)
+    private String password;
+
+    @Column(name = "phone", length = 20)
+    private String phone;
+
+    @Column(name = "city", length = 100)
+    private String city;
+
+    @Column(name = "username", nullable = false, unique = true, length = 100)
+    private String username;
+
+    @Column(name = "is_confirmed", nullable = false)
+    private Boolean isConfirmed = false;
+
+    @Column(name = "fcm_token", length = 255)
+    private String fcmToken;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/model/UserConfirmationToken.java ===
+
+package com.vitalpaw.coreservice.user.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "user_confirmation_tokens")
+public class UserConfirmationToken {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @OneToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Column(name = "token", nullable = false, unique = true, length = 4)
+    private String token;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "expires_at", nullable = false)
+    private LocalDateTime expiresAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/repository/PasswordResetTokenRepository.java ===
+
+package com.vitalpaw.coreservice.user.repository;
+
+import com.vitalpaw.coreservice.user.model.PasswordResetToken;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface PasswordResetTokenRepository extends JpaRepository<PasswordResetToken, Long> {
+    Optional<PasswordResetToken> findByToken(String token);
+    Optional<PasswordResetToken> findByUserId(Long userId);
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/repository/UserConfirmationTokenRepository.java ===
+
+package com.vitalpaw.coreservice.user.repository;
+
+import com.vitalpaw.coreservice.user.model.UserConfirmationToken;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserConfirmationTokenRepository extends JpaRepository<UserConfirmationToken, Long> {
+    Optional<UserConfirmationToken> findByToken(String token);
+    Optional<UserConfirmationToken> findByUserId(Long userId);
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/repository/UserRepository.java ===
+
+package com.vitalpaw.coreservice.user.repository;
+
+import com.vitalpaw.coreservice.user.model.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByEmail(String email);
+    Optional<User> findByUsername(String username);
+    boolean existsByEmail(String email);
+    boolean existsByUsername(String username);
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/service/EmailService.java ===
+
+package com.vitalpaw.coreservice.user.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.stereotype.Service;
+
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
+
+@Service
+public class EmailService {
+
+    @Autowired
+    private JavaMailSender mailSender;
+
+    @Value("${spring.mail.username}")
+    private String fromEmail;
+
+    public void sendConfirmationEmail(String to, String token) throws MessagingException {
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true);
+
+        helper.setFrom(fromEmail);
+        helper.setTo(to);
+        helper.setSubject("VitalPaw - Confirma tu cuenta");
+        helper.setText(String.format("""
+            <h2>Bienvenido a VitalPaw</h2>
+            <p>Para confirmar tu cuenta, usa el siguiente código:</p>
+            <h3>%s</h3>
+            <p>Este código expira en 24 horas.</p>
+            <p>Si no solicitaste esta acción, ignora este correo.</p>
+            """, token), true);
+
+        mailSender.send(message);
+    }
+
+    public void sendPasswordResetEmail(String to, String token) throws MessagingException {
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true);
+
+        helper.setFrom(fromEmail);
+        helper.setTo(to);
+        helper.setSubject("VitalPaw - Restablecer contraseña");
+        helper.setText(String.format("""
+            <h2>Restablecimiento de contraseña</h2>
+            <p>Para restablecer tu contraseña, usa el siguiente código:</p>
+            <h3>%s</h3>
+            <p>Este código expira en 1 hora.</p>
+            <p>Si no solicitaste esta acción, ignora este correo.</p>
+            """, token), true);
+
+        mailSender.send(message);
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/user/service/UserService.java ===
+
+package com.vitalpaw.coreservice.user.service;
+
+import com.vitalpaw.coreservice.user.dto.UserCreateDTO;
+import com.vitalpaw.coreservice.user.dto.UserDTO;
+import com.vitalpaw.coreservice.user.model.User;
+import com.vitalpaw.coreservice.user.model.UserConfirmationToken;
+import com.vitalpaw.coreservice.user.model.PasswordResetToken;
+import com.vitalpaw.coreservice.user.repository.UserRepository;
+import com.vitalpaw.coreservice.user.repository.UserConfirmationTokenRepository;
+import com.vitalpaw.coreservice.user.repository.PasswordResetTokenRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.mail.MessagingException;
+import java.time.LocalDateTime;
+import java.util.Random;
+
+@Service
+public class UserService {
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private UserConfirmationTokenRepository tokenRepository;
+
+    @Autowired
+    private PasswordResetTokenRepository passwordResetTokenRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private EmailService emailService;
+
+    private static final Random RANDOM = new Random();
+
+    private String generateFourDigitToken() {
+        return String.format("%04d", RANDOM.nextInt(10000));
+    }
+
+    @Transactional
+    public UserDTO createUser(UserCreateDTO dto) {
+        if (userRepository.existsByEmail(dto.getEmail())) {
+            throw new IllegalArgumentException("Email already exists");
+        }
+        if (userRepository.existsByUsername(dto.getUsername())) {
+            throw new IllegalArgumentException("Username already exists");
+        }
+
+        User user = new User();
+        user.setFirstName(dto.getFirstName());
+        user.setLastName(dto.getLastName());
+        user.setEmail(dto.getEmail());
+        user.setPassword(passwordEncoder.encode(dto.getPassword()));
+        user.setPhone(dto.getPhone());
+        user.setCity(dto.getCity());
+        user.setUsername(dto.getUsername());
+        user.setIsConfirmed(false);
+
+        userRepository.save(user);
+
+        UserConfirmationToken token = new UserConfirmationToken();
+        token.setUser(user);
+        token.setToken(generateFourDigitToken());
+        token.setExpiresAt(LocalDateTime.now().plusHours(24));
+        tokenRepository.save(token);
+
+        try {
+            emailService.sendConfirmationEmail(user.getEmail(), token.getToken());
+        } catch (MessagingException e) {
+            throw new RuntimeException("Failed to send confirmation email", e);
+        }
+
+        return mapToDTO(user);
+    }
+
+    @Transactional(readOnly = true)
+    public UserDTO getUserById(Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        return mapToDTO(user);
+    }
+
+    @Transactional
+    public UserDTO updateUser(Long id, UserCreateDTO dto) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (dto.getEmail() != null && !dto.getEmail().equals(user.getEmail()) && userRepository.existsByEmail(dto.getEmail())) {
+            throw new IllegalArgumentException("Email already exists");
+        }
+        if (dto.getUsername() != null && !dto.getUsername().equals(user.getUsername()) && userRepository.existsByUsername(dto.getUsername())) {
+            throw new IllegalArgumentException("Username already exists");
+        }
+
+        if (dto.getFirstName() != null) user.setFirstName(dto.getFirstName());
+        if (dto.getLastName() != null) user.setLastName(dto.getLastName());
+        if (dto.getEmail() != null) user.setEmail(dto.getEmail());
+        if (dto.getPassword() != null) user.setPassword(passwordEncoder.encode(dto.getPassword()));
+        if (dto.getPhone() != null) user.setPhone(dto.getPhone());
+        if (dto.getCity() != null) user.setCity(dto.getCity());
+        if (dto.getUsername() != null) user.setUsername(dto.getUsername());
+
+        userRepository.save(user);
+        return mapToDTO(user);
+    }
+
+    @Transactional
+    public void deleteUser(Long id) {
+        if (!userRepository.existsById(id)) {
+            throw new IllegalArgumentException("User not found");
+        }
+        userRepository.deleteById(id);
+    }
+
+    @Transactional
+    public UserDTO confirmAccount(String token) {
+        UserConfirmationToken confirmationToken = tokenRepository.findByToken(token)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+        if (confirmationToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Invalid or expired token");
+        }
+        User user = confirmationToken.getUser();
+        user.setIsConfirmed(true);
+        userRepository.save(user);
+        tokenRepository.delete(confirmationToken);
+        return mapToDTO(user);
+    }
+
+    @Transactional
+    public void requestPasswordReset(String email) throws MessagingException {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+
+        PasswordResetToken resetToken = new PasswordResetToken();
+        resetToken.setUser(user);
+        resetToken.setToken(generateFourDigitToken());
+        resetToken.setExpiresAt(LocalDateTime.now().plusHours(1)); // Expira en 1 hora
+        passwordResetTokenRepository.save(resetToken);
+
+        emailService.sendPasswordResetEmail(user.getEmail(), resetToken.getToken());
+    }
+
+    @Transactional
+    public UserDTO resetPassword(String token, String newPassword) {
+        PasswordResetToken resetToken = passwordResetTokenRepository.findByToken(token)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+        if (resetToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Invalid or expired token");
+        }
+        User user = resetToken.getUser();
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        passwordResetTokenRepository.delete(resetToken);
+        return mapToDTO(user);
+    }
+
+    @Transactional
+    public UserDTO changePassword(Long id, String newPassword) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        return mapToDTO(user);
+    }
+
+    @Transactional(readOnly = true)
+    public String getConfirmationToken(Long userId) {
+        UserConfirmationToken token = tokenRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Confirmation token not found for user: " + userId));
+        return token.getToken();
+    }
+
+    @Transactional(readOnly = true)
+    public String getPasswordResetToken(Long userId) {
+        PasswordResetToken token = passwordResetTokenRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Password reset token not found for user: " + userId));
+        return token.getToken();
+    }
+
+    @Transactional
+    public UserDTO updateFcmToken(Long id, String fcmToken) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        user.setFcmToken(fcmToken);
+        userRepository.save(user);
+        return mapToDTO(user);
+    }
+
+    private UserDTO mapToDTO(User user) {
+        UserDTO dto = new UserDTO();
+        dto.setId(user.getId());
+        dto.setFirstName(user.getFirstName());
+        dto.setLastName(user.getLastName());
+        dto.setEmail(user.getEmail());
+        dto.setPhone(user.getPhone());
+        dto.setCity(user.getCity());
+        dto.setUsername(user.getUsername());
+        dto.setIsConfirmed(user.getIsConfirmed());
+        dto.setFcmToken(user.getFcmToken());
+        return dto;
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/CoreServiceApplication.java ===
+
+package com.vitalpaw.coreservice;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class CoreServiceApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(CoreServiceApplication.class, args);
+	}
+
+}
+
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/alert/model/Alert.java ===
+
+package com.vitalpaw.coreservice.alert.model;
+
+import com.vitalpaw.coreservice.pet.model.Pet;
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "alerts")
+public class Alert {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "pet_id", nullable = false)
+    private Pet pet;
+
+    @Column(name = "message", nullable = false)
+    private String message;
+
+    @Column(name = "timestamp", nullable = false)
+    private LocalDateTime timestamp;
+
+    @Column(name = "type", nullable = false, length = 50)
+    private String type;
+
+    @Column(name = "pulse")
+    private Integer pulse;
+
+    @Column(name = "temperature")
+    private Float temperature;
+
+    @PrePersist
+    protected void onCreate() {
+        timestamp = LocalDateTime.now();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/alert/repository/AlertRepository.java ===
+
+package com.vitalpaw.coreservice.alert.repository;
+
+import com.vitalpaw.coreservice.alert.model.Alert;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface AlertRepository extends JpaRepository<Alert, Long> {
+    List<Alert> findByPetIdOrderByTimestampDesc(Long petId);
+
+    @Query("SELECT a FROM Alert a WHERE a.pet.id = :petId ORDER BY a.timestamp DESC")
+    List<Alert> findTopByPetId(@Param("petId") Long petId, @Param("org.springframework.data.domain.Pageable") org.springframework.data.domain.Pageable pageable);
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/alert/controller/AlertController.java ===
+
+package com.vitalpaw.coreservice.alert.controller;
+
+import com.vitalpaw.coreservice.alert.dto.AlertDTO;
+import com.vitalpaw.coreservice.alert.model.Alert;
+import com.vitalpaw.coreservice.alert.repository.AlertRepository;
+import com.vitalpaw.coreservice.pet.service.PetService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.validation.constraints.Min;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/api/alerts")
+@SecurityRequirement(name = "ApiKeyAuth") // Requiere API Key
+public class AlertController {
+
+    @Autowired
+    private AlertRepository alertRepository;
+
+    @Autowired
+    private PetService petService;
+
+    @Operation(summary = "Obtener alertas por ID de mascota", description = "Devuelve las últimas alertas asociadas a una mascota.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Lista de alertas devuelta", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = AlertDTO.class))
+        }),
+        @ApiResponse(responseCode = "404", description = "Mascota no encontrada", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @GetMapping("/pet/{petId}")
+    public ResponseEntity<List<AlertDTO>> getAlertsByPetId(
+        @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long petId,
+        @RequestParam(defaultValue = "10") @Min(1) int limit) {
+
+        petService.getPetById(petId);
+
+        Pageable pageable = PageRequest.of(0, limit);
+        List<Alert> alerts = alertRepository.findTopByPetId(petId, pageable);
+        List<AlertDTO> alertDTOs = alerts.stream().map(this::mapToAlertDTO).collect(Collectors.toList());
+
+        return ResponseEntity.ok(alertDTOs);
+    }
+
+    @Operation(summary = "Eliminar una alerta", description = "Elimina una alerta específica del sistema.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "204", description = "Alerta eliminada exitosamente"),
+        @ApiResponse(responseCode = "404", description = "Alerta no encontrada", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @DeleteMapping("/{alertId}")
+    public ResponseEntity<Void> deleteAlert(
+        @Parameter(description = "ID único de la alerta", required = true) @PathVariable Long alertId) {
+
+        if (!alertRepository.existsById(alertId)) {
+            return ResponseEntity.notFound().build();
+        }
+
+        alertRepository.deleteById(alertId);
+        return ResponseEntity.noContent().build();
+    }
+
+    private AlertDTO mapToAlertDTO(Alert alert) {
+        AlertDTO dto = new AlertDTO();
+        dto.setId(alert.getId());
+        dto.setPetId(alert.getPet().getId());
+        dto.setMessage(alert.getMessage());
+        dto.setTimestamp(alert.getTimestamp());
+        dto.setType(alert.getType());
+        dto.setPulse(alert.getPulse());
+        dto.setTemperature(alert.getTemperature());
+        return dto;
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/main/java/com/vitalpaw/coreservice/alert/dto/AlertDTO.java ===
+
+package com.vitalpaw.coreservice.alert.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@Schema(description = "Datos de una alerta registrada para una mascota")
+public class AlertDTO {
+
+    @Schema(example = "1", description = "ID único de la alerta")
+    private Long id;
+
+    @Schema(example = "1", description = "ID de la mascota asociada")
+    private Long petId;
+
+    @Schema(example = "La temperatura está fuera de rango normal.", description = "Mensaje descriptivo de la alerta")
+    private String message;
+
+    @Schema(example = "2025-04-05T10:00:00", description = "Fecha y hora en que se generó la alerta")
+    private LocalDateTime timestamp;
+
+    @Schema(example = "temperature_alert", description = "Tipo de alerta (ej: temperatura, pulso, etc.)")
+    private String type;
+
+    @Schema(example = "140", description = "Valor del pulso registrado (opcional)")
+    private Integer pulse;
+
+    @Schema(example = "39.5", description = "Temperatura corporal registrada (opcional)")
+    private Float temperature;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/core-service/src/test/java/com/vitalpaw/coreservice/CoreServiceApplicationTests.java ===
+
+package com.vitalpaw.coreservice;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest(classes = CoreServiceApplication.class)
+class CoreServiceApplicationTests {
+
+    @Test
+    void contextLoads() {
+    }
+}

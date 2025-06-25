@@ -1,4 +1,4 @@
-package com.vitalpaw.sensoralert.dto;
+package com.vitalpaw.sensoralertservice.dto;
 
 import lombok.Data;
 

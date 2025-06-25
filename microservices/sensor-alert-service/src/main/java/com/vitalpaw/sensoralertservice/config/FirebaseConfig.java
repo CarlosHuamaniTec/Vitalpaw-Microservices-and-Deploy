@@ -1,4 +1,4 @@
-package com.vitalpaw.sensoralert.config;
+package com.vitalpaw.sensoralertservice.config;
 
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;

@@ -9,6 +9,9 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * Configuración de seguridad para la aplicación.
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -16,6 +19,12 @@ public class SecurityConfig {
     @Autowired
     private ApiKeyFilter apiKeyFilter;
 
+    /**
+     * Configura la cadena de filtros de seguridad para la aplicación.
+     * @param http Configuración de seguridad HTTP.
+     * @return Cadena de filtros de seguridad.
+     * @throws Exception si ocurre un error durante la configuración.
+     */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -29,6 +38,7 @@ public class SecurityConfig {
                     "/v3/api-docs/**",
                     "/swagger-ui/**",
                     "/swagger-ui.html",
+                    "/api/users/login",
                     "/api/users/confirm/**",
                     "/api/users/password-reset/request",
                     "/api/users/password-reset"

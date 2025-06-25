@@ -45,7 +45,6 @@ public class AlertController {
         @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long petId,
         @RequestParam(defaultValue = "10") @Min(1) int limit) {
 
-        // Verificar que la mascota exista
         petService.getPetById(petId);
 
         Pageable pageable = PageRequest.of(0, limit);

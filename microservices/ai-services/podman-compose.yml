@@ -1,5 +1,8 @@
 version: '3.8'
 
+env_file:
+  - .env
+
 services:
   ollama-gpu:
     build:
@@ -10,6 +13,11 @@ services:
       - "11440:11434"
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=10m
+      - NVIDIA_VISIBLE_DEVICES=all
+      - LLM_MODEL=${LLM_MODEL:-phi4-mini:3.8b}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-bge-m3:567m}
     deploy:
       resources:
         reservations:
@@ -17,14 +25,15 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    environment:
-      OLLAMA_KEEP_ALIVE: "10m"
+        limits:
+          cpus: '4.0'
+          memory: 12G
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:11434/api/tags"]
       interval: 15s
       timeout: 10s
-      retries: 6
+      retries: 5
       start_period: 10s
 
   qdrant:
@@ -37,13 +46,18 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: ["CMD-SHELL", "curl -s http://localhost:6333/readyz | grep -q 'all shards are ready'"]
       interval: 15s
       timeout: 10s
-      retries: 6
-      start_period: 10s
-    restart: unless-stopped
+      retries: 5
+      start_period: 30s
 
   backend-ollama-api:
     build: ./backend_ollama_python
@@ -51,22 +65,80 @@ services:
     ports:
       - "8000:8000"
     environment:
-      OLLAMA_GPU_HOST: http://ollama-gpu:11434
-      QDRANT_HOST: http://qdrant:6333
-      LLM_MODEL: phi4-mini:3.8b
-      EMBEDDING_MODEL: bge-m3:567m
-      API_PORT: 8000
+      - OLLAMA_GPU_HOST=http://ollama-gpu:11434
+      - QDRANT_HOST=http://qdrant:6333
+      - REDIS_HOST=dragonfly
+      - LLM_MODEL=${LLM_MODEL:-phi4-mini:3.8b}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-bge-m3:567m}
+      - API_PORT=8000
+      - API_KEY=${API_KEY:-lodyuipo}
     depends_on:
       - ollama-gpu
       - qdrant
+      - dragonfly
+    volumes:
+      - ./docs:/app/docs:ro,z
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health", "|", "grep", "\"healthy\""]
       interval: 15s
       timeout: 10s
-      retries: 6
+      retries: 3
+      start_period: 10s
+
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v1.30.3
+    container_name: dragonfly
+    ports:
+      - "6379:6379"
+    volumes:
+      - dragonfly_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:sqlite:/app/auth.db
+    volumes:
+      - auth_data:/app
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/auth/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
       start_period: 10s
 
 volumes:
   ollama_data:
+    name: ollama_data
   qdrant_data:
+    name: qdrant_data
+  dragonfly_data:
+    name: dragonfly_data
+  auth_data:
+    name: auth_data

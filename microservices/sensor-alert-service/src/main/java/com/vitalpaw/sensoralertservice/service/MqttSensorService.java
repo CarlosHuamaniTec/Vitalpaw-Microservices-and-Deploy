@@ -1,15 +1,15 @@
-package com.vitalpaw.sensoralert.service;
+package com.vitalpaw.sensoralertservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.Message;
-import com.vitalpaw.sensoralert.dto.SensorDataDTO;
-import com.vitalpaw.sensoralert.model.Alert;
-import com.vitalpaw.sensoralert.model.Breed;
-import com.vitalpaw.sensoralert.model.Pet;
-import com.vitalpaw.sensoralert.model.PetDevice;
-import com.vitalpaw.sensoralert.repository.AlertRepository;
-import com.vitalpaw.sensoralert.repository.PetDeviceRepository;
+import com.vitalpaw.sensoralertservice.dto.SensorDataDTO;
+import com.vitalpaw.sensoralertservice.entity.Alert;
+import com.vitalpaw.sensoralertservice.entity.Breed;
+import com.vitalpaw.sensoralertservice.entity.Pet;
+import com.vitalpaw.sensoralertservice.entity.PetDevice;
+import com.vitalpaw.sensoralertservice.entity.AlertRepository;
+import com.vitalpaw.sensoralertservice.entity.PetDeviceRepository;
 import jakarta.annotation.PostConstruct;
 import org.eclipse.paho.client.mqttv3.*;
 import org.slf4j.Logger;

@@ -20,7 +20,7 @@ services:
     networks:
       - vitalpaw-network
     volumes:
-      - vitalpaw_photos:/app/photos
+      - vitalpaw_photos:/app/images/pets
     deploy:
       mode: replicated
       replicas: 1

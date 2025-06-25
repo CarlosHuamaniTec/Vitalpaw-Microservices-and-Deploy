@@ -20,12 +20,12 @@ public class BreedController {
     @Autowired
     private BreedService breedService;
 
-    @Operation(summary = "Create a new breed", description = "Registers a new pet breed with vital sign thresholds.")
+    @Operation(summary = "Crear una nueva raza", description = "Registra una nueva raza de mascota con umbrales de signos vitales.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Breed created successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid input data"),
-            @ApiResponse(responseCode = "401", description = "Invalid or missing API Key"),
-            @ApiResponse(responseCode = "409", description = "Duplicate breed name")
+        @ApiResponse(responseCode = "200", description = "Raza creada exitosamente"),
+        @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos"),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante"),
+        @ApiResponse(responseCode = "409", description = "Nombre de raza duplicado")
     })
     @PostMapping
     public ResponseEntity<BreedDTO> createBreed(@Valid @RequestBody BreedDTO dto) {
@@ -33,21 +33,21 @@ public class BreedController {
         return ResponseEntity.ok(createdBreed);
     }
 
-    @Operation(summary = "Get breed by ID", description = "Retrieves the details of a breed by its ID.")
+    @Operation(summary = "Obtener raza por ID", description = "Devuelve los detalles de una raza según su ID.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Breed found"),
-            @ApiResponse(responseCode = "401", description = "Invalid or missing API Key"),
-            @ApiResponse(responseCode = "404", description = "Breed not found")
+        @ApiResponse(responseCode = "200", description = "Raza encontrada"),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante"),
+        @ApiResponse(responseCode = "404", description = "Raza no encontrada")
     })
     @GetMapping("/{id}")
     public ResponseEntity<BreedDTO> getBreed(@PathVariable Long id) {
         return ResponseEntity.ok(breedService.getBreedById(id));
     }
 
-    @Operation(summary = "List all breeds", description = "Retrieves a list of all registered breeds with their names and details.")
+    @Operation(summary = "Listar todas las razas", description = "Devuelve una lista de todas las razas registradas con sus nombres y detalles.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "List of breeds retrieved successfully"),
-            @ApiResponse(responseCode = "401", description = "Invalid or missing API Key")
+        @ApiResponse(responseCode = "200", description = "Lista de razas obtenida exitosamente"),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante")
     })
     @GetMapping
     public ResponseEntity<List<BreedDTO>> getAllBreeds() {

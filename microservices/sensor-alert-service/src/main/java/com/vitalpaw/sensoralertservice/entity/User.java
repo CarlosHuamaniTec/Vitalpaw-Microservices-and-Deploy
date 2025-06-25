@@ -1,4 +1,4 @@
-package com.vitalpaw.sensoralert.model;
+package com.vitalpaw.sensoralertservice.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;

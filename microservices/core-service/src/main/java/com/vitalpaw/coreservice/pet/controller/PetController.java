@@ -12,12 +12,17 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 @RestController
 @RequestMapping("/api/pets")
@@ -26,6 +31,9 @@ public class PetController {
 
     @Autowired
     private PetService petService;
+
+    @Value("${app.image.storage-path}")
+    private String uploadDir;
 
     @Operation(summary = "Crear una nueva mascota", description = "Registra una nueva mascota en el sistema.")
     @ApiResponses(value = {
@@ -86,5 +94,36 @@ public class PetController {
         @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long id,
         @RequestParam("file") MultipartFile file) throws IOException {
         return ResponseEntity.ok(petService.uploadPetPhoto(id, file));
+    }
+
+    @Operation(summary = "Obtener foto de mascota", description = "Devuelve la imagen de la mascota especificada por su ID.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Imagen de la mascota devuelta", content = {
+            @Content(mediaType = "image/jpeg", schema = @Schema(type = "string", format = "binary")),
+            @Content(mediaType = "image/png", schema = @Schema(type = "string", format = "binary"))
+        }),
+        @ApiResponse(responseCode = "404", description = "Mascota o imagen no encontrada", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @GetMapping(value = "/{id}/photo", produces = {MediaType.IMAGE_JPEG_VALUE, MediaType.IMAGE_PNG_VALUE})
+    public ResponseEntity<Resource> getPetPhoto(
+        @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long id) throws IOException {
+        PetDTO pet = petService.getPetById(id);
+        if (pet.getPhoto() == null || pet.getPhoto().isEmpty()) {
+            throw new IllegalArgumentException("No photo found for pet with ID: " + id);
+        }
+
+        Path filePath = Paths.get(uploadDir).resolve(pet.getPhoto().replace("/images/pets/", ""));
+        Resource resource = new UrlResource(filePath.toUri());
+        if (!resource.exists() || !resource.isReadable()) {
+            throw new IllegalArgumentException("Photo file not found for pet with ID: " + id);
+        }
+
+        String contentType = pet.getPhoto().endsWith(".jpg") || pet.getPhoto().endsWith(".jpeg") ?
+            MediaType.IMAGE_JPEG_VALUE : MediaType.IMAGE_PNG_VALUE;
+
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(contentType))
+            .body(resource);
     }
 }
