@@ -4,7 +4,10 @@ import lombok.Data;
 
 @Data
 public class SensorDataDTO {
-    private String deviceId;
-    private float temperature;
+    private String sensorID;
+    private float temp;
     private int pulse;
+    private float x;
+    private float y;
+    private float z;
 }

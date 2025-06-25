@@ -6,10 +6,7 @@ import lombok.Data;
 public class SensorData {
     private String deviceId;
     private Long petId;
-    private String type;
     private Float temperature;
-    private Integer heartRate;
-    private Float xAxis;
-    private Float yAxis;
-    private Float zAxis;
+    private Integer pulse;
+    private String status;
 }

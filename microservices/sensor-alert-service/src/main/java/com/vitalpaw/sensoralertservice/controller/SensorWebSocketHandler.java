@@ -2,7 +2,7 @@ package com.vitalpaw.sensoralertservice.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vitalpaw.sensoralertservice.entity.SensorData;
-import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Gauge;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,9 +25,9 @@ public class SensorWebSocketHandler extends TextWebSocketHandler {
     @Value("${api.key}")
     private String apiKey;
 
-    public SensorWebSocketHandler(MeterRegistry meterRegistry) {
+    public SensorWebSocketHandler(io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         Gauge.builder("vitalpaw.websocket.connections", sessions, List::size)
-                .description("Number of active WebSocket connections")
+                .description("Número de conexiones WebSocket activas")
                 .register(meterRegistry);
     }
 
@@ -35,11 +35,11 @@ public class SensorWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String requestApiKey = extractApiKey(session);
         if (requestApiKey == null || !requestApiKey.equals(apiKey)) {
-            session.close(CloseStatus.BAD_DATA.withReason("Invalid or missing API Key"));
+            session.close(CloseStatus.BAD_DATA.withReason("Clave API inválida o ausente"));
             return;
         }
         sessions.add(session);
-        logger.info("New WebSocket connection established: {}", session.getId());
+        logger.info("Nueva conexión WebSocket establecida: {}", session.getId());
     }
 
     private String extractApiKey(WebSocketSession session) {
@@ -52,19 +52,20 @@ public class SensorWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        logger.debug("Received WebSocket message from {}: {}", session.getId(), message.getPayload());
+        logger.debug("Mensaje WebSocket recibido de {}: {}", session.getId(), message.getPayload());
     }
 
     public void broadcastSensorData(SensorData data) throws IOException {
         String jsonData = objectMapper.writeValueAsString(data);
         TextMessage message = new TextMessage(jsonData);
-        logger.debug("Broadcasting sensor data for device {}: {}", data.getDeviceId(), jsonData);
+        logger.debug("Enviando datos de sensor para dispositivo {}: Temp=%.1f, Pulso=%d, Estado=%s",
+                data.getDeviceId(), data.getTemperature(), data.getPulse(), data.getStatus());
         for (WebSocketSession session : sessions) {
             if (session.isOpen()) {
                 try {
                     session.sendMessage(message);
                 } catch (IOException e) {
-                    logger.error("Failed to send message to session {}: {}", session.getId(), e.getMessage());
+                    logger.error("Error al enviar mensaje a la sesión {}: {}", session.getId(), e.getMessage());
                 }
             }
         }
@@ -73,6 +74,6 @@ public class SensorWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         sessions.remove(session);
-        logger.info("WebSocket connection closed: {} with status {}", session.getId(), status);
+        logger.info("Conexión WebSocket cerrada: {} con estado: {}", session.getId(), status);
     }
 }

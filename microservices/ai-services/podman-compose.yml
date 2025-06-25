@@ -127,12 +127,11 @@ services:
           memory: 2G
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/auth/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"] # CAMBIADO AQUÍ
       interval: 15s
       timeout: 10s
       retries: 3
-      start_period: 10s
-
+      start_period: 30s
 volumes:
   ollama_data:
     name: ollama_data

@@ -1,0 +1,882 @@
+=== SENSOR ALERT SERVICE ===
+
+=== DOCKERFILE ===
+
+FROM maven:3.9.9-eclipse-temurin-17 AS build
+WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN mvn dependency:go-offline && mvn package -DskipTests
+
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+COPY --from=build /app/target/sensor-alert-service-0.0.1-SNAPSHOT.jar app.jar
+COPY firebase-adminsdk.json /app/firebase-adminsdk.json
+
+ENV SENSOR_ALERT_SERVICE_PORT=8084 \
+    DB_PORT=3306 \
+    DB_NAME=vitalpawdb \
+    DB_USERNAME=vitalpaw \
+    SPRING_JPA_HIBERNATE_DDL_AUTO=validate \
+    JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+
+EXPOSE ${SENSOR_ALERT_SERVICE_PORT}
+
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
+ENTRYPOINT ["sh", "-c", "\
+    export DB_PASSWORD=$(cat /run/secrets/db_password 2>/dev/null || echo '') && \
+    export MQTT_PASSWORD=$(cat /run/secrets/mqtt_password 2>/dev/null || echo 'ricardo') && \
+    export API_KEY=$(cat /run/secrets/api_key 2>/dev/null || echo '') && \
+    exec java ${JAVA_OPTS} -Dserver.port=${SENSOR_ALERT_SERVICE_PORT} -jar app.jar\
+"]
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/pom.xml ===
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.5</version>
+        <relativePath/>
+    </parent>
+    <groupId>com.vitalpaw</groupId>
+    <artifactId>sensor-alert-service</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>sensor-alert-service</name>
+
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.paho</groupId>
+            <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
+            <version>1.2.5</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>9.2.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.mariadb.jdbc</groupId>
+            <artifactId>mariadb-java-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.34</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.34</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/test/java/com/vitalpaw/sensoralertservice/SensoralertserviceApplicationTests.java ===
+
+package com.vitalpaw.sensoralertservice;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class SensoralertserviceApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}
+
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/SensoralertserviceApplication.java ===
+
+package com.vitalpaw.sensoralertservice;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class SensoralertserviceApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(SensoralertserviceApplication.class, args);
+	}
+
+}
+
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/repository/AlertRepository.java ===
+
+package com.vitalpaw.sensoralertservice.repository;
+
+import com.vitalpaw.sensoralertservice.entity.Alert;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface AlertRepository extends JpaRepository<Alert, Long> {
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/repository/PetDeviceRepository.java ===
+
+package com.vitalpaw.sensoralertservice.repository;
+
+import com.vitalpaw.sensoralertservice.entity.PetDevice;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface PetDeviceRepository extends JpaRepository<PetDevice, Long> {
+    Optional<PetDevice> findByDeviceId(String deviceId);
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/repository/PetRepository.java ===
+
+package com.vitalpaw.sensoralertservice.repository;
+
+import com.vitalpaw.sensoralertservice.entity.Pet;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface PetRepository extends JpaRepository<Pet, Long> {
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/service/MqttSensorService.java ===
+
+package com.vitalpaw.sensoralertservice.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.firebase.messaging.FirebaseMessagingException;
+import com.google.firebase.messaging.Message;
+import com.vitalpaw.sensoralertservice.dto.SensorDataDTO;
+import com.vitalpaw.sensoralertservice.dto.SensorDataResponseDTO;
+import com.vitalpaw.sensoralertservice.entity.Alert;
+import com.vitalpaw.sensoralertservice.entity.Breed;
+import com.vitalpaw.sensoralertservice.entity.Pet;
+import com.vitalpaw.sensoralertservice.entity.PetDevice;
+import com.vitalpaw.sensoralertservice.repository.AlertRepository;
+import com.vitalpaw.sensoralertservice.repository.PetDeviceRepository;
+import jakarta.annotation.PostConstruct;
+import org.eclipse.paho.client.mqttv3.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class MqttSensorService {
+    private static final Logger logger = LoggerFactory.getLogger(MqttSensorService.class);
+
+    @Value("${mqtt.broker.url}")
+    private String broker;
+
+    @Value("${mqtt.username}")
+    private String username;
+
+    @Value("${mqtt.password}")
+    private String password;
+
+    @Value("${mqtt.client.id}")
+    private String clientId;
+
+    @Value("${app.sensor.thresholds.immobile}")
+    private float immobileThreshold;
+
+    @Value("${app.sensor.thresholds.fall}")
+    private float fallThreshold;
+
+    @Autowired
+    private SimpMessagingTemplate messagingTemplate;
+
+    @Autowired
+    private PetDeviceRepository petDeviceRepository;
+
+    @Autowired
+    private AlertRepository alertRepository;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private MqttClient mqttClient;
+
+    // Sensibilidad del MPU6050 para ±2g (16384 LSB/g)
+    private static final float MPU6050_SENSITIVITY = 16384.0f;
+
+    @PostConstruct
+    public void init() {
+        try {
+            mqttClient = new MqttClient(broker, clientId);
+            MqttConnectOptions connOpts = new MqttConnectOptions();
+            connOpts.setUserName(username);
+            connOpts.setPassword(password.toCharArray());
+            connOpts.setAutomaticReconnect(true);
+            mqttClient.connect(connOpts);
+
+            // Suscribirse a topics por deviceId
+            List<PetDevice> devices = petDeviceRepository.findAll();
+            for (PetDevice device : devices) {
+                String topic = "vitalpaw/health/" + device.getDeviceId();
+                mqttClient.subscribe(topic, (t, msg) -> processMessage(t, msg));
+                logger.info("Suscrito al topic MQTT: {}", topic);
+            }
+
+            logger.info("Conexión al broker MQTT establecida: {}", broker);
+        } catch (MqttException e) {
+            logger.error("Error al conectar al broker MQTT: {}", e.getMessage(), e);
+            throw new RuntimeException("No se pudo conectar al broker MQTT", e);
+        }
+    }
+
+    private void processMessage(String topic, MqttMessage msg) {
+        String payload = new String(msg.getPayload());
+        logger.info("Mensaje recibido en el topic MQTT {}: {}", topic, payload);
+
+        try {
+            SensorDataDTO sensorData = objectMapper.readValue(payload, SensorDataDTO.class);
+            String deviceId = sensorData.getSensorID();
+            PetDevice petDevice = petDeviceRepository.findByDeviceId(deviceId)
+                    .orElse(null);
+
+            if (petDevice != null) {
+                Pet pet = petDevice.getPet();
+                Breed breed = pet.getBreed();
+
+                if (breed != null) {
+                    // Verificar rangos de temperatura y pulso
+                    boolean outOfRange = sensorData.getTemp() < breed.getMinTemperature() ||
+                            sensorData.getTemp() > breed.getMaxTemperature() ||
+                            sensorData.getPulse() < breed.getMinHeartRate() ||
+                            sensorData.getPulse() > breed.getMaxHeartRate();
+
+                    if (outOfRange) {
+                        // Crear y guardar alerta
+                        Alert alert = new Alert();
+                        alert.setPet(pet);
+                        alert.setMessage(String.format("Valores fuera de rango: Temp=%.1f, Pulso=%d",
+                                sensorData.getTemp(), sensorData.getPulse()));
+                        alert.setType("sensor_alert");
+                        alert.setPulse(sensorData.getPulse());
+                        alert.setTemperature(sensorData.getTemp());
+                        alertRepository.save(alert);
+                        logger.info("Alerta guardada para la mascota {}: {}", pet.getId(), alert.getMessage());
+
+                        // Enviar notificación FCM
+                        String fcmToken = pet.getOwner().getFcmToken();
+                        if (fcmToken != null && !fcmToken.isEmpty()) {
+                            try {
+                                Message fcmMessage = Message.builder()
+                                        .setToken(fcmToken)
+                                        .putData("title", "Alerta de Salud - " + pet.getName())
+                                        .putData("body", alert.getMessage())
+                                        .build();
+                                FirebaseMessaging.getInstance().send(fcmMessage);
+                                logger.info("Notificación FCM enviada a: {}", fcmToken);
+                            } catch (FirebaseMessagingException e) {
+                                logger.error("Error al enviar notificación FCM a {}: {}", fcmToken, e.getMessage(), e);
+                            }
+                        } else {
+                            logger.warn("No se encontró fcmToken para el usuario {}", pet.getOwner().getId());
+                        }
+                    }
+
+                    // Normalizar valores de X, Y, Z a g
+                    float x_g = sensorData.getX() / MPU6050_SENSITIVITY;
+                    float y_g = sensorData.getY() / MPU6050_SENSITIVITY;
+                    float z_g = sensorData.getZ() / MPU6050_SENSITIVITY;
+
+                    // Procesar estado de movimiento
+                    String status = determineMovementStatus(x_g, y_g, z_g);
+
+                    // Enviar datos al frontend vía WebSocket
+                    SensorDataResponseDTO responseDTO = new SensorDataResponseDTO();
+                    responseDTO.setTemperature(sensorData.getTemp());
+                    responseDTO.setPulse(sensorData.getPulse());
+                    responseDTO.setStatus(status);
+                    messagingTemplate.convertAndSend("/topic/sensores/" + pet.getId(), responseDTO);
+                    logger.debug("Datos enviados a WebSocket para la mascota {}: Temp=%.1f, Pulso=%d, Estado=%s",
+                            pet.getId(), sensorData.getTemp(), sensorData.getPulse(), status);
+                } else {
+                    logger.warn("No se encontró raza para la mascota {}", pet.getId());
+                }
+            } else {
+                logger.warn("No se encontró dispositivo con ID {}", deviceId);
+            }
+        } catch (Exception e) {
+            logger.error("Error al procesar mensaje MQTT: {}", e.getMessage(), e);
+        }
+    }
+
+    private String determineMovementStatus(float x, float y, float z) {
+        double magnitude = Math.sqrt(x * x + y * y + z * z);
+        if (magnitude <= immobileThreshold) {
+            return "Inmóvil";
+        } else if (magnitude >= fallThreshold) {
+            return "Caído";
+        } else {
+            return "Activo";
+        }
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/controller/SensorWebSocketHandler.java ===
+
+package com.vitalpaw.sensoralertservice.controller;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vitalpaw.sensoralertservice.entity.SensorData;
+import io.micrometer.core.instrument.Gauge;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.handler.TextWebSocketHandler;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+@Component
+public class SensorWebSocketHandler extends TextWebSocketHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(SensorWebSocketHandler.class);
+    private final CopyOnWriteArrayList<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Value("${api.key}")
+    private String apiKey;
+
+    public SensorWebSocketHandler(io.micrometer.core.instrument.MeterRegistry meterRegistry) {
+        Gauge.builder("vitalpaw.websocket.connections", sessions, List::size)
+                .description("Número de conexiones WebSocket activas")
+                .register(meterRegistry);
+    }
+
+    @Override
+    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+        String requestApiKey = extractApiKey(session);
+        if (requestApiKey == null || !requestApiKey.equals(apiKey)) {
+            session.close(CloseStatus.BAD_DATA.withReason("Clave API inválida o ausente"));
+            return;
+        }
+        sessions.add(session);
+        logger.info("Nueva conexión WebSocket establecida: {}", session.getId());
+    }
+
+    private String extractApiKey(WebSocketSession session) {
+        String query = session.getUri().getQuery();
+        if (query != null && query.contains("apiKey=")) {
+            return query.split("apiKey=")[1].split("&")[0];
+        }
+        return null;
+    }
+
+    @Override
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+        logger.debug("Mensaje WebSocket recibido de {}: {}", session.getId(), message.getPayload());
+    }
+
+    public void broadcastSensorData(SensorData data) throws IOException {
+        String jsonData = objectMapper.writeValueAsString(data);
+        TextMessage message = new TextMessage(jsonData);
+        logger.debug("Enviando datos de sensor para dispositivo {}: Temp=%.1f, Pulso=%d, Estado=%s",
+                data.getDeviceId(), data.getTemperature(), data.getPulse(), data.getStatus());
+        for (WebSocketSession session : sessions) {
+            if (session.isOpen()) {
+                try {
+                    session.sendMessage(message);
+                } catch (IOException e) {
+                    logger.error("Error al enviar mensaje a la sesión {}: {}", session.getId(), e.getMessage());
+                }
+            }
+        }
+    }
+
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+        sessions.remove(session);
+        logger.info("Conexión WebSocket cerrada: {} con estado: {}", session.getId(), status);
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/config/AppConfig.java ===
+
+package com.vitalpaw.sensoralertservice.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.web.client.RestTemplate;
+
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
+    }
+
+    @Bean
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
+        RedisTemplate<String, Object> template = new RedisTemplate<>();
+        template.setConnectionFactory(connectionFactory);
+        template.setKeySerializer(new StringRedisSerializer());
+        template.setValueSerializer(new Jackson2JsonRedisSerializer<>(Object.class));
+        return template;
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/config/FirebaseConfig.java ===
+
+package com.vitalpaw.sensoralertservice.config;
+
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.FirebaseOptions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
+
+import jakarta.annotation.PostConstruct;
+import java.io.FileInputStream;
+import java.io.IOException;
+
+@Configuration
+public class FirebaseConfig {
+    private static final Logger logger = LoggerFactory.getLogger(FirebaseConfig.class);
+
+    @Value("${firebase.admin-sdk-path}")
+    private String firebaseCredentialsPath;
+
+    @PostConstruct
+    public void initialize() {
+        try (FileInputStream serviceAccount = new FileInputStream(firebaseCredentialsPath)) {
+            FirebaseOptions options = FirebaseOptions.builder()
+                    .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+                    .build();
+            if (FirebaseApp.getApps().isEmpty()) {
+                FirebaseApp.initializeApp(options);
+                logger.info("FirebaseApp inicializado correctamente");
+            }
+        } catch (IOException e) {
+            logger.error("Error al inicializar Firebase: {}", e.getMessage(), e);
+            throw new RuntimeException("No se pudo inicializar Firebase", e);
+        }
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/config/WebSocketConfig.java ===
+
+package com.vitalpaw.sensoralertservice.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
+import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
+import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+
+@Configuration
+@EnableWebSocketMessageBroker
+public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+    @Override
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
+        registry.addEndpoint("/ws").setAllowedOriginPatterns("*").withSockJS();
+    }
+
+    @Override
+    public void configureMessageBroker(MessageBrokerRegistry registry) {
+        registry.enableSimpleBroker("/topic");
+        registry.setApplicationDestinationPrefixes("/app");
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/dto/SensorDataDTO.java ===
+
+package com.vitalpaw.sensoralertservice.dto;
+
+import lombok.Data;
+
+@Data
+public class SensorDataDTO {
+    private String sensorID;
+    private float temp;
+    private int pulse;
+    private float x;
+    private float y;
+    private float z;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/dto/SensorDataResponseDTO.java ===
+
+package com.vitalpaw.sensoralertservice.dto;
+
+import lombok.Data;
+
+@Data
+public class SensorDataResponseDTO {
+    private float temperature;
+    private int pulse;
+    private String status;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/entity/SensorData.java ===
+
+package com.vitalpaw.sensoralertservice.entity;
+
+import lombok.Data;
+
+@Data
+public class SensorData {
+    private String deviceId;
+    private Long petId;
+    private Float temperature;
+    private Integer pulse;
+    private String status;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/entity/Alert.java ===
+
+package com.vitalpaw.sensoralertservice.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "alerts")
+public class Alert {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "pet_id", nullable = false)
+    private Pet pet;
+
+    @Column(name = "message", nullable = false)
+    private String message;
+
+    @Column(name = "timestamp", nullable = false)
+    private LocalDateTime timestamp;
+
+    @Column(name = "type", nullable = false, length = 50)
+    private String type;
+
+    @Column(name = "pulse")
+    private Integer pulse;
+
+    @Column(name = "temperature")
+    private Float temperature;
+
+    @PrePersist
+    protected void onCreate() {
+        timestamp = LocalDateTime.now();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/entity/User.java ===
+
+package com.vitalpaw.sensoralertservice.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "users")
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "first_name", nullable = false, length = 100)
+    private String firstName;
+
+    @Column(name = "last_name", length = 100)
+    private String lastName;
+
+    @Column(name = "email", nullable = false, unique = true)
+    private String email;
+
+    @Column(name = "password", nullable = false, length = 128)
+    private String password;
+
+    @Column(name = "phone", length = 20)
+    private String phone;
+
+    @Column(name = "city", length = 100)
+    private String city;
+
+    @Column(name = "username", nullable = false, unique = true, length = 100)
+    private String username;
+
+    @Column(name = "is_confirmed", nullable = false)
+    private Boolean isConfirmed = false;
+
+    @Column(name = "fcm_token", length = 255)
+    private String fcmToken;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/entity/Pet.java ===
+
+package com.vitalpaw.sensoralertservice.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "pets")
+public class Pet {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "name", nullable = false, length = 100)
+    private String name;
+
+    @Column(name = "species", nullable = false, length = 100)
+    private String species;
+
+    @ManyToOne
+    @JoinColumn(name = "breed_id")
+    private Breed breed;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
+    @ManyToOne
+    @JoinColumn(name = "owner_id", nullable = false)
+    private User owner;
+
+    @Column(name = "photo")
+    private String photo;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/entity/PetDevice.java ===
+
+package com.vitalpaw.sensoralertservice.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "pet_devices")
+public class PetDevice {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "pet_id", nullable = false)
+    private Pet pet;
+
+    @Column(name = "device_id", nullable = false, unique = true, length = 50)
+    private String deviceId;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+    }
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/java/com/vitalpaw/sensoralertservice/entity/Breed.java ===
+
+package com.vitalpaw.sensoralertservice.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+
+@Data
+@Entity
+@Table(name = "breeds")
+public class Breed {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "name", nullable = false, length = 200, unique = true)
+    private String name;
+
+    @Column(name = "species", nullable = false, length = 100)
+    private String species;
+
+    @Column(name = "max_temperature", nullable = false)
+    private Float maxTemperature;
+
+    @Column(name = "min_temperature", nullable = false)
+    private Float minTemperature;
+
+    @Column(name = "max_heart_rate", nullable = false)
+    private Integer maxHeartRate;
+
+    @Column(name = "min_heart_rate", nullable = false)
+    private Integer minHeartRate;
+}
+
+=== ARCHIVO: /home/chuamani/Repositories/vitalpaw/microservices/sensor-alert-service/src/main/resources/application.yml ===
+
+server:
+  port: ${SENSOR_ALERT_SERVICE_PORT:8084}
+spring:
+  application:
+    name: sensor-alert-service
+  datasource:
+    url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:vitalpawdb}
+    username: ${DB_USERNAME:vitalpaw}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.mariadb.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    show-sql: false
+    database-platform: org.hibernate.dialect.MariaDBDialect
+  data:
+    redis:
+      host: ${DRAGONFLY_HOST:localhost}
+      port: ${DRAGONFLY_PORT:6379}
+mqtt:
+  broker:
+    url: ${MQTT_BROKER_URL:tcp://mqtt.tecsup.xyz:1883}
+  username: ${MQTT_USERNAME:ricardo}
+  password: ${MQTT_PASSWORD:ricardo}
+  client:
+    id: sensor-alert-client-${random.uuid}
+  topic: ${MQTT_TOPIC:vitalpaw/health/#}
+firebase:
+  admin-sdk-path: ${FIREBASE_ADMIN_SDK_PATH:/app/firebase-adminsdk.json}
+app:
+  sensor:
+    thresholds:
+      immobile: ${IMMOBILE_THRESHOLD:0.5}
+      lowActivity: ${LOW_ACTIVITY_THRESHOLD:1.5}
+      fall: ${FALL_THRESHOLD:3.0}
+      maxTemperature: ${MAX_TEMPERATURE:40.0}
+      maxHeartRate: ${MAX_HEART_RATE:180}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+api:
+  key: ${API_KEY}
