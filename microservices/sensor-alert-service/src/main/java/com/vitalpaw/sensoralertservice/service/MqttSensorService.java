@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
-import com.vitalpaw.sensoralertservice.dto.SensorDataDTO;
+import com.vitalpaw.sensoralertservice.dto.Esp32SensorDataDTO; // Nuevo DTO para los datos del ESP32
 import com.vitalpaw.sensoralertservice.dto.SensorDataResponseDTO;
 import com.vitalpaw.sensoralertservice.entity.Alert;
 import com.vitalpaw.sensoralertservice.entity.Breed;
@@ -21,7 +21,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import java.time.LocalDateTime;
+import java.util.Optional; // Importación para Optional
 
 @Service
 public class MqttSensorService {
@@ -39,11 +40,20 @@ public class MqttSensorService {
     @Value("${mqtt.client.id}")
     private String clientId;
 
+    @Value("${mqtt.topic}")
+    private String mqttTopic;
+
     @Value("${app.sensor.thresholds.immobile}")
     private float immobileThreshold;
 
     @Value("${app.sensor.thresholds.fall}")
     private float fallThreshold;
+
+    @Value("${app.sensor.thresholds.maxTemperature}")
+    private float maxTemperature;
+
+    @Value("${app.sensor.thresholds.maxHeartRate}")
+    private int maxHeartRate;
 
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
@@ -57,9 +67,6 @@ public class MqttSensorService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private MqttClient mqttClient;
 
-    // Sensibilidad del MPU6050 para ±2g (16384 LSB/g)
-    private static final float MPU6050_SENSITIVITY = 16384.0f;
-
     @PostConstruct
     public void init() {
         try {
@@ -68,20 +75,17 @@ public class MqttSensorService {
             connOpts.setUserName(username);
             connOpts.setPassword(password.toCharArray());
             connOpts.setAutomaticReconnect(true);
+            connOpts.setCleanSession(true); // Limpia la sesión en cada reconexión
             mqttClient.connect(connOpts);
 
-            // Suscribirse a topics por deviceId
-            List<PetDevice> devices = petDeviceRepository.findAll();
-            for (PetDevice device : devices) {
-                String topic = "vitalpaw/health/" + device.getDeviceId();
-                mqttClient.subscribe(topic, (t, msg) -> processMessage(t, msg));
-                logger.info("Suscrito al topic MQTT: {}", topic);
-            }
+            mqttClient.subscribe(mqttTopic, (t, msg) -> processMessage(t, msg));
+            logger.info("Suscrito al topic MQTT: {}", mqttTopic);
 
             logger.info("Conexión al broker MQTT establecida: {}", broker);
         } catch (MqttException e) {
             logger.error("Error al conectar al broker MQTT: {}", e.getMessage(), e);
-            throw new RuntimeException("No se pudo conectar al broker MQTT", e);
+            // Considera no lanzar RuntimeException aquí para que el servicio Spring Boot se inicie
+            // y pueda intentar reconectar, pero loggear el error.
         }
     }
 
@@ -90,88 +94,129 @@ public class MqttSensorService {
         logger.info("Mensaje recibido en el topic MQTT {}: {}", topic, payload);
 
         try {
-            SensorDataDTO sensorData = objectMapper.readValue(payload, SensorDataDTO.class);
-            String deviceId = sensorData.getSensorID();
-            PetDevice petDevice = petDeviceRepository.findByDeviceId(deviceId)
-                    .orElse(null);
+            Esp32SensorDataDTO esp32Data = objectMapper.readValue(payload, Esp32SensorDataDTO.class);
 
-            if (petDevice != null) {
-                Pet pet = petDevice.getPet();
-                Breed breed = pet.getBreed();
+            // --- Importante: Asignación de dispositivo/mascota ---
+            // Tu ESP32 NO envía un 'deviceId'. Para la demo, lo estamos hardcodeando aquí.
+            // Para una solución robusta, el ESP32 DEBERÍA incluir un identificador único en su JSON.
+            String fixedDeviceId = "ESP32_VITALPAW_001"; // ID Fijo para la demo
 
-                if (breed != null) {
-                    // Verificar rangos de temperatura y pulso
-                    boolean outOfRange = sensorData.getTemp() < breed.getMinTemperature() ||
-                            sensorData.getTemp() > breed.getMaxTemperature() ||
-                            sensorData.getPulse() < breed.getMinHeartRate() ||
-                            sensorData.getPulse() > breed.getMaxHeartRate();
+            Optional<PetDevice> optionalPetDevice = petDeviceRepository.findByDeviceId(fixedDeviceId);
+            PetDevice petDevice = optionalPetDevice.orElseGet(() -> {
+                logger.warn("PetDevice con ID '{}' no encontrado. Intentando crear uno de ejemplo...", fixedDeviceId);
+                // Si no existe, intenta asociarlo a la primera mascota existente para la demo
+                // O deberías tener una forma de registrar dispositivos en tu backend/frontend
+                List<Pet> allPets = petDeviceRepository.findAll().stream().map(PetDevice::getPet).toList();
+                if (allPets.isEmpty()) {
+                    logger.error("No hay mascotas registradas en la base de datos para asociar el dispositivo.");
+                    return null; // No podemos continuar sin una mascota
+                }
+                Pet defaultPet = allPets.get(0); // Tomamos la primera mascota encontrada
+                PetDevice newDevice = new PetDevice();
+                newDevice.setDeviceId(fixedDeviceId);
+                newDevice.setPet(defaultPet);
+                newDevice.setIsActive(true);
+                return petDeviceRepository.save(newDevice);
+            });
 
-                    if (outOfRange) {
-                        // Crear y guardar alerta
-                        Alert alert = new Alert();
-                        alert.setPet(pet);
-                        alert.setMessage(String.format("Valores fuera de rango: Temp=%.1f, Pulso=%d",
-                                sensorData.getTemp(), sensorData.getPulse()));
-                        alert.setType("sensor_alert");
-                        alert.setPulse(sensorData.getPulse());
-                        alert.setTemperature(sensorData.getTemp());
-                        alertRepository.save(alert);
-                        logger.info("Alerta guardada para la mascota {}: {}", pet.getId(), alert.getMessage());
+            if (petDevice == null) {
+                logger.error("No se pudo obtener/crear un PetDevice para procesar los datos. Abortando.");
+                return;
+            }
 
-                        // Enviar notificación FCM
-                        String fcmToken = pet.getOwner().getFcmToken();
-                        if (fcmToken != null && !fcmToken.isEmpty()) {
-                            try {
-                                Message fcmMessage = Message.builder()
-                                        .setToken(fcmToken)
-                                        .putData("title", "Alerta de Salud - " + pet.getName())
-                                        .putData("body", alert.getMessage())
-                                        .build();
-                                FirebaseMessaging.getInstance().send(fcmMessage);
-                                logger.info("Notificación FCM enviada a: {}", fcmToken);
-                            } catch (FirebaseMessagingException e) {
-                                logger.error("Error al enviar notificación FCM a {}: {}", fcmToken, e.getMessage(), e);
-                            }
-                        } else {
-                            logger.warn("No se encontró fcmToken para el usuario {}", pet.getOwner().getId());
-                        }
-                    }
+            Pet pet = petDevice.getPet();
+            if (pet == null) {
+                logger.error("El PetDevice '{}' no está asociado a ninguna mascota.", fixedDeviceId);
+                return;
+            }
 
-                    // Normalizar valores de X, Y, Z a g
-                    float x_g = sensorData.getX() / MPU6050_SENSITIVITY;
-                    float y_g = sensorData.getY() / MPU6050_SENSITIVITY;
-                    float z_g = sensorData.getZ() / MPU6050_SENSITIVITY;
+            Breed breed = pet.getBreed(); // Necesitas una raza para los umbrales
 
-                    // Procesar estado de movimiento
-                    String status = determineMovementStatus(x_g, y_g, z_g);
+            float temperature = esp32Data.getTemperatura_celsius();
+            // El ESP32 solo envía 'ecg_raw', no un pulso calculado. Lo usamos como pulso para la demo.
+            int pulse = esp32Data.getEcg_raw();
+            String movimientoEstado = esp32Data.getMovimiento(); // "Sin movimiento", "En movimiento", "MPU6050 error lectura"
 
-                    // Enviar datos al frontend vía WebSocket
-                    SensorDataResponseDTO responseDTO = new SensorDataResponseDTO();
-                    responseDTO.setTemperature(sensorData.getTemp());
-                    responseDTO.setPulse(sensorData.getPulse());
-                    responseDTO.setStatus(status);
-                    messagingTemplate.convertAndSend("/topic/sensores/" + pet.getId(), responseDTO);
-                    logger.debug("Datos enviados a WebSocket para la mascota {}: Temp=%.1f, Pulso=%d, Estado=%s",
-                            pet.getId(), sensorData.getTemp(), sensorData.getPulse(), status);
-                } else {
-                    logger.warn("No se encontró raza para la mascota {}", pet.getId());
+            // --- Lógica de Alertas ---
+            String alertMessage = "";
+            boolean isAlert = false;
+
+            if (breed != null) {
+                if (temperature < breed.getMinTemperature() || temperature > breed.getMaxTemperature()) {
+                    isAlert = true;
+                    alertMessage += String.format("Temp. fuera de rango (%.1fC). ", temperature);
+                }
+                // Si el pulso (ecg_raw) es un valor que se puede comparar con un rango de pulso de la raza
+                if (pulse < breed.getMinHeartRate() || pulse > breed.getMaxHeartRate()) {
+                    isAlert = true;
+                    alertMessage += String.format("Pulso fuera de rango (%d BPM). ", pulse);
                 }
             } else {
-                logger.warn("No se encontró dispositivo con ID {}", deviceId);
+                logger.warn("La mascota {} no tiene una raza asociada. No se aplicarán umbrales específicos de raza.", pet.getId());
+                // Puedes aplicar umbrales generales si no hay raza
+                if (temperature > maxTemperature) { // Usa el umbral general del application.yml
+                    isAlert = true;
+                    alertMessage += String.format("Temp. alta (%.1fC). ", temperature);
+                }
+                if (pulse > maxHeartRate) { // Usa el umbral general del application.yml
+                    isAlert = true;
+                    alertMessage += String.format("Pulso alto (%d BPM). ", pulse);
+                }
             }
+
+            // Lógica para detectar "Caída" basada en el string del ESP32
+            if ("Caído".equalsIgnoreCase(movimientoEstado)) {
+                isAlert = true;
+                alertMessage += "¡Posible caída detectada! ";
+            }
+
+            if (isAlert) {
+                Alert alert = new Alert();
+                alert.setPet(pet);
+                alert.setMessage(alertMessage.trim());
+                alert.setType("sensor_alert");
+                alert.setPulse(pulse);
+                alert.setTemperature(temperature);
+                alert.setTimestamp(LocalDateTime.now());
+                alertRepository.save(alert);
+                logger.info("Alerta guardada para la mascota {}: {}", pet.getId(), alert.getMessage());
+
+                // Enviar notificación FCM
+                String fcmToken = pet.getOwner() != null ? pet.getOwner().getFcmToken() : null;
+                if (fcmToken != null && !fcmToken.isEmpty()) {
+                    try {
+                        Message fcmMessage = Message.builder()
+                                .setToken(fcmToken)
+                                .putData("title", "Alerta de VitalPaw - " + pet.getName())
+                                .putData("body", alert.getMessage())
+                                .build();
+                        FirebaseMessaging.getInstance().send(fcmMessage);
+                        logger.info("Notificación FCM enviada a: {}", fcmToken);
+                    } catch (FirebaseMessagingException e) {
+                        logger.error("Error al enviar notificación FCM a {}: {}", fcmToken, e.getMessage(), e);
+                    }
+                } else {
+                    logger.warn("No se encontró fcmToken para el dueño de la mascota {}.", pet.getName());
+                }
+            }
+
+            // Enviar datos al frontend vía WebSocket
+            SensorDataResponseDTO responseDTO = new SensorDataResponseDTO();
+            responseDTO.setDeviceId(petDevice.getDeviceId()); // Incluye el deviceId
+            responseDTO.setPetId(pet.getId()); // Incluye el petId
+            responseDTO.setTemperature(temperature);
+            responseDTO.setPulse(pulse);
+            responseDTO.setStatus(movimientoEstado); // 'Sin movimiento', 'En movimiento', 'Caído', etc.
+            
+            // Envío al tópico WebSocket específico de la mascota
+            messagingTemplate.convertAndSend("/topic/sensores/" + pet.getId(), responseDTO);
+            logger.debug("Datos enviados a WebSocket para la mascota {}: Temp=%.1f, Pulso=%d, Estado=%s",
+                    pet.getId(), temperature, pulse, movimientoEstado);
+
+        } catch (MqttException e) {
+            logger.error("Error MQTT al procesar mensaje: {}", e.getMessage(), e);
         } catch (Exception e) {
             logger.error("Error al procesar mensaje MQTT: {}", e.getMessage(), e);
-        }
-    }
-
-    private String determineMovementStatus(float x, float y, float z) {
-        double magnitude = Math.sqrt(x * x + y * y + z * z);
-        if (magnitude <= immobileThreshold) {
-            return "Inmóvil";
-        } else if (magnitude >= fallThreshold) {
-            return "Caído";
-        } else {
-            return "Activo";
         }
     }
 }

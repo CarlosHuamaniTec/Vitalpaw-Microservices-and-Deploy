@@ -4,6 +4,8 @@ import com.vitalpaw.coreservice.pet.dto.PetCreateDTO;
 import com.vitalpaw.coreservice.pet.dto.PetDTO;
 import com.vitalpaw.coreservice.pet.model.Pet;
 import com.vitalpaw.coreservice.pet.repository.PetRepository;
+import com.vitalpaw.coreservice.pet.repository.PetDeviceRepository;
+import com.vitalpaw.coreservice.alert.repository.AlertRepository;
 import com.vitalpaw.coreservice.user.model.User;
 import com.vitalpaw.coreservice.user.repository.UserRepository;
 import com.vitalpaw.coreservice.breed.model.Breed;
@@ -20,7 +22,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.stream.Collectors;
 
+/**
+ * Servicio para gestionar la lógica de negocio relacionada con mascotas.
+ */
 @Service
 public class PetService {
     @Autowired
@@ -32,6 +39,12 @@ public class PetService {
     @Autowired
     private BreedRepository breedRepository;
 
+    @Autowired
+    private PetDeviceRepository petDeviceRepository;
+
+    @Autowired
+    private AlertRepository alertRepository;
+
     @Value("${app.image.storage-path}")
     private String uploadDir;
 
@@ -42,12 +55,12 @@ public class PetService {
         pet.setSpecies(dto.getSpecies());
         if (dto.getBreedId() != null) {
             Breed breed = breedRepository.findById(dto.getBreedId())
-                    .orElseThrow(() -> new IllegalArgumentException("Breed not found"));
+                    .orElseThrow(() -> new IllegalArgumentException("Raza no encontrada"));
             pet.setBreed(breed);
         }
         pet.setBirthDate(dto.getBirthDate());
         User owner = userRepository.findById(dto.getOwnerId())
-                .orElseThrow(() -> new IllegalArgumentException("Owner not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Dueño no encontrado"));
         pet.setOwner(owner);
         pet.setPhoto(dto.getPhoto());
 
@@ -58,26 +71,34 @@ public class PetService {
     @Transactional(readOnly = true)
     public PetDTO getPetById(Long id) {
         Pet pet = petRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Pet not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Mascota no encontrada"));
         return mapToDTO(pet);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PetDTO> getPetsByOwnerId(Long ownerId) {
+        userRepository.findById(ownerId)
+                .orElseThrow(() -> new IllegalArgumentException("Dueño no encontrado"));
+        List<Pet> pets = petRepository.findByOwnerId(ownerId);
+        return pets.stream().map(this::mapToDTO).collect(Collectors.toList());
     }
 
     @Transactional
     public PetDTO updatePet(Long id, PetCreateDTO dto) {
         Pet pet = petRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Pet not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Mascota no encontrada"));
         
         if (dto.getName() != null) pet.setName(dto.getName());
         if (dto.getSpecies() != null) pet.setSpecies(dto.getSpecies());
         if (dto.getBreedId() != null) {
             Breed breed = breedRepository.findById(dto.getBreedId())
-                    .orElseThrow(() -> new IllegalArgumentException("Breed not found"));
+                    .orElseThrow(() -> new IllegalArgumentException("Raza no encontrada"));
             pet.setBreed(breed);
         }
         if (dto.getBirthDate() != null) pet.setBirthDate(dto.getBirthDate());
         if (dto.getOwnerId() != null) {
             User owner = userRepository.findById(dto.getOwnerId())
-                    .orElseThrow(() -> new IllegalArgumentException("Owner not found"));
+                    .orElseThrow(() -> new IllegalArgumentException("Dueño no encontrado"));
             pet.setOwner(owner);
         }
         if (dto.getPhoto() != null) pet.setPhoto(dto.getPhoto());
@@ -88,42 +109,44 @@ public class PetService {
 
     @Transactional
     public void deletePet(Long id) {
-        if (!petRepository.existsById(id)) {
-            throw new IllegalArgumentException("Pet not found");
-        }
+        Pet pet = petRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Mascota no encontrada"));
+        
+        // Eliminar dispositivos asociados
+        petDeviceRepository.deleteByPetId(id);
+        
+        // Eliminar alertas asociadas
+        alertRepository.deleteByPetId(id);
+        
+        // Eliminar la mascota
         petRepository.deleteById(id);
     }
 
     @Transactional
     public PetDTO uploadPetPhoto(Long id, MultipartFile file) throws IOException {
         Pet pet = petRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Pet not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Mascota no encontrada"));
 
-        // Validate file
         if (file.isEmpty()) {
-            throw new IllegalArgumentException("File is empty");
+            throw new IllegalArgumentException("El archivo está vacío");
         }
         String contentType = file.getContentType();
         if (!contentType.equals("image/jpeg") && !contentType.equals("image/png")) {
-            throw new IllegalArgumentException("Only JPEG and PNG images are supported");
+            throw new IllegalArgumentException("Solo se admiten imágenes JPEG y PNG");
         }
 
-        // Create directory if it doesn't exist
         Path dirPath = Paths.get(uploadDir);
         if (!Files.exists(dirPath)) {
             Files.createDirectories(dirPath);
         }
 
-        // Generate unique filename: userId_petId_timestamp.extension
         String extension = contentType.equals("image/jpeg") ? ".jpg" : ".png";
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss"));
         String filename = String.format("user_%d_pet_%d_%s%s", pet.getOwner().getId(), id, timestamp, extension);
         Path filePath = dirPath.resolve(filename);
 
-        // Save file
         Files.write(filePath, file.getBytes());
 
-        // Update pet's photo path
         String relativePath = "/images/pets/" + filename;
         pet.setPhoto(relativePath);
         petRepository.save(pet);

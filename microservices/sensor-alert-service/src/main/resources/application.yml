@@ -4,14 +4,15 @@ spring:
   application:
     name: sensor-alert-service
   datasource:
+    # Usamos las variables de entorno de Docker Swarm
     url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:vitalpawdb}
     username: ${DB_USERNAME:vitalpaw}
-    password: ${DB_PASSWORD}
+    password: ${DB_PASSWORD} # <-- ¡Usará el secreto de Docker Swarm!
     driver-class-name: org.mariadb.jdbc.Driver
   jpa:
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
-    show-sql: false
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate} # Mantenemos la variable de entorno
+    show-sql: true # Útil para depuración. Puedes cambiar a 'false' en producción.
     database-platform: org.hibernate.dialect.MariaDBDialect
   data:
     redis:
@@ -21,18 +22,18 @@ mqtt:
   broker:
     url: ${MQTT_BROKER_URL:tcp://mqtt.tecsup.xyz:1883}
   username: ${MQTT_USERNAME:ricardo}
-  password: ${MQTT_PASSWORD:ricardo}
+  password: ${MQTT_PASSWORD:ricardo} # <-- Si también manejas esto como secreto, ajusta a ${MQTT_PASSWORD}
   client:
     id: sensor-alert-client-${random.uuid}
-  topic: ${MQTT_TOPIC:vitalpaw/health/#}
+  topic: ${MQTT_TOPIC:esp32/sensores} # <-- Confirma este es el tópico de tu ESP32
 firebase:
-  admin-sdk-path: ${FIREBASE_ADMIN_SDK_PATH:/app/firebase-adminsdk.json}
+  admin-sdk-path: ${FIREBASE_ADMIN_sdk_PATH:/app/firebase-adminsdk.json}
 app:
   sensor:
     thresholds:
       immobile: ${IMMOBILE_THRESHOLD:0.5}
       lowActivity: ${LOW_ACTIVITY_THRESHOLD:1.5}
-      fall: ${FALL_THRESHOLD:3.0}
+      fall: ${FALL_FALL:3.0}
       maxTemperature: ${MAX_TEMPERATURE:40.0}
       maxHeartRate: ${MAX_HEART_RATE:180}
 management:
@@ -40,5 +41,3 @@ management:
     web:
       exposure:
         include: health,metrics
-api:
-  key: ${API_KEY}

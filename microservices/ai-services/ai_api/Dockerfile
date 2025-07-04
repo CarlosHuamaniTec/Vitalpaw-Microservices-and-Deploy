@@ -8,8 +8,8 @@ COPY requirements.txt .
 RUN pip install --upgrade pip --root-user-action=ignore
 RUN pip install --no-cache-dir -r requirements.txt --root-user-action=ignore
 
-COPY . .
+COPY app ./app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

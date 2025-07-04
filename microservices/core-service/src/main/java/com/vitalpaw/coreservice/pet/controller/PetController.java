@@ -23,7 +23,11 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 
+/**
+ * Controlador para gestionar los endpoints relacionados con mascotas.
+ */
 @RestController
 @RequestMapping("/api/pets")
 @SecurityRequirement(name = "ApiKeyAuth")
@@ -63,6 +67,20 @@ public class PetController {
         return ResponseEntity.ok(petService.getPetById(id));
     }
 
+    @Operation(summary = "Obtener todas las mascotas de un usuario", description = "Devuelve una lista de todas las mascotas asociadas a un usuario por su ID.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Lista de mascotas devuelta", content = {
+            @Content(mediaType = "application/json", schema = @Schema(implementation = PetDTO.class))
+        }),
+        @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @GetMapping("/owner/{ownerId}")
+    public ResponseEntity<List<PetDTO>> getPetsByOwnerId(
+        @Parameter(description = "ID único del usuario", required = true) @PathVariable Long ownerId) {
+        return ResponseEntity.ok(petService.getPetsByOwnerId(ownerId));
+    }
+
     @Operation(summary = "Actualizar mascota", description = "Modifica los datos de una mascota existente.")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Mascota actualizada", content = {
@@ -77,6 +95,19 @@ public class PetController {
         @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long id,
         @Valid @RequestBody PetCreateDTO dto) {
         return ResponseEntity.ok(petService.updatePet(id, dto));
+    }
+
+    @Operation(summary = "Eliminar una mascota", description = "Elimina una mascota específica del sistema según su ID.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "204", description = "Mascota eliminada exitosamente", content = @Content),
+        @ApiResponse(responseCode = "404", description = "Mascota no encontrada", content = @Content),
+        @ApiResponse(responseCode = "401", description = "Clave API inválida o faltante", content = @Content)
+    })
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deletePet(
+        @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long id) {
+        petService.deletePet(id);
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Subir foto de mascota", description = "Sube una imagen para la mascota especificada.")
@@ -110,13 +141,13 @@ public class PetController {
         @Parameter(description = "ID único de la mascota", required = true) @PathVariable Long id) throws IOException {
         PetDTO pet = petService.getPetById(id);
         if (pet.getPhoto() == null || pet.getPhoto().isEmpty()) {
-            throw new IllegalArgumentException("No photo found for pet with ID: " + id);
+            throw new IllegalArgumentException("No se encontró una foto para la mascota con ID: " + id);
         }
 
         Path filePath = Paths.get(uploadDir).resolve(pet.getPhoto().replace("/images/pets/", ""));
         Resource resource = new UrlResource(filePath.toUri());
         if (!resource.exists() || !resource.isReadable()) {
-            throw new IllegalArgumentException("Photo file not found for pet with ID: " + id);
+            throw new IllegalArgumentException("No se encontró el archivo de la foto para la mascota con ID: " + id);
         }
 
         String contentType = pet.getPhoto().endsWith(".jpg") || pet.getPhoto().endsWith(".jpeg") ?
