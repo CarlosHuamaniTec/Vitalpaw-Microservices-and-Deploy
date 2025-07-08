@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:sqlite:/app/auth.db}
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    hibernate:
+      dialect: org.hibernate.dialect.SQLiteDialect
+      ddl-auto: update
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    cache: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+logging:
+  level:
+    root: INFO # Mantén el root en INFO si quieres
+    org.springframework.web: DEBUG # Este es más amplio y debería mostrar todo el tráfico web
+    com.auth.service: DEBUG # Asegúrate de que tus propios controladores también logueen

@@ -1,0 +1,34 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE # Base de datos en memoria H2
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver # Driver para H2
+  jpa:
+    hibernate:
+      ddl-auto: create-drop # Crea el esquema al inicio de cada test y lo elimina al final
+    show-sql: false # No mostrar SQL en los logs de prueba
+    database-platform: org.hibernate.dialect.H2Dialect # Dialecto para H2
+  mail:
+    host: localhost
+    port: 25
+    username:
+    password:
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+# ¡NUEVO! Configuración de API Key para pruebas
+api:
+  key: test-api-key-for-dev # Valor por defecto para la API_KEY en el entorno de pruebas
+
+# ¡NUEVO! Configuración de logs para pruebas (para suprimir la mayoría de los logs de Spring)
+logging:
+  level:
+    root: WARN # Solo mostrar WARN, ERROR, FATAL
+    org.springframework: WARN
+    org.hibernate: WARN
+    com.vitalpaw: INFO # Puedes ajustar esto si quieres ver logs de tu propio código

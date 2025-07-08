@@ -1,0 +1,67 @@
+version: "3.8"
+
+networks:
+  vitalpaw-network:
+    external: true
+
+services:
+  sensor-alert-service:
+    image: 161.132.38.142:5000/sensoralertservice:latest
+    environment:
+      - DB_HOST=db_mariadb
+      - DB_PORT=3306
+      - DB_NAME=vitalpawdb
+      - DB_USERNAME=vitalpaw
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=validate
+      - MQTT_BROKER_URL=tcp://mqtt.tecsup.xyz:1883
+      - MQTT_USERNAME=ricardo
+      - MQTT_PASSWORD_FILE=/run/secrets/mqtt_password
+      - MQTT_TOPIC=vitalpaw/health/#
+      - FIREBASE_ADMIN_SDK_PATH=/app/firebase-adminsdk.json
+      - API_KEY_FILE=/run/secrets/api_key
+      - SENSOR_ALERT_SERVICE_PORT=8084
+    secrets:
+      - db_password
+      - mqtt_password
+      - api_key
+    networks:
+      - vitalpaw-network
+    deploy:
+      mode: replicated
+      replicas: 1
+      endpoint_mode: vip
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 1m30s
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1.5G
+        reservations:
+          memory: 768M
+          cpus: '0.5'
+      placement:
+        constraints:
+          - node.role == worker
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.sensor-alert-ws.rule=Host(`vitalpaw.tecsup.xyz`) && PathPrefix(`/ws`)"
+        - "traefik.http.routers.sensor-alert-ws.entrypoints=websecure"
+        - "traefik.http.routers.sensor-alert-ws.service=sensor-alert-service"
+        - "traefik.http.routers.sensor-alert-ws.tls=true"
+        - "traefik.http.routers.sensor-alert-ws.tls.certresolver=letsencrypt"
+        - "traefik.http.services.sensor-alert-service.loadbalancer.server.port=8084"
+
+secrets:
+  db_password:
+    external: true
+  mqtt_password:
+    external: true
+  api_key:
+    external: true
