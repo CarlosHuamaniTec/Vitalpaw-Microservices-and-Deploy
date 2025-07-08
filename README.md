@@ -1,6 +1,6 @@
 # VitalPaw: Sistema de Gestión de Mascotas
 
-VitalPaw es un proyecto centrado en la gestión de datos de mascotas, implementado como un microservicio Spring Boot y desplegado utilizando Docker Swarm y Traefik.
+El sistema de Vitalpaw esta conformado por una arquitectura de microservicios usando DTO en los microservicios. El sistema esta hecho para desplegarse en una VPS con la IP pública asociada a un dominio.
 
 ---
 
