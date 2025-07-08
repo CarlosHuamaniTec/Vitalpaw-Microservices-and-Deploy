@@ -1,6 +1,6 @@
 # VitalPaw: Sistema de Gestión de Mascotas
 
-El sistema de Vitalpaw esta conformado por una arquitectura de microservicios usando DTO en los microservicios. El sistema esta hecho para desplegarse en una VPS con la IP pública asociada a un dominio.
+El sistema de Vitalpaw esta conformado por una arquitectura de microservicios usando DTO en los microservicios. El sistema esta hecho para desplegarse en una VPS con IP pública asociada a un dominio.
 
 ---
 
